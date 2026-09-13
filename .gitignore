@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs / vendored deps
+venv/
+.venv/
+env/
+libs/
+
+# Runtime data (contacts storage, app db)
+data/
+*.db
+*.sqlite3
+*.htpasswd
+
+# Local config & secrets (commit config.example.yml instead)
+config.yml
+config.local.yml
+.env
+
+# Logs
+*.log
+
+# OS
+.DS_Store
