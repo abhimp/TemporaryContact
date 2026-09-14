@@ -1,0 +1,23 @@
+# Temporary Contacts behind Apache (TLS termination + reverse proxy).
+# Enable modules first:  a2enmod proxy proxy_http headers ssl
+# Get certs with:        certbot --apache -d contacts.example.com
+
+<VirtualHost *:80>
+    ServerName contacts.example.com
+    Redirect permanent / https://contacts.example.com/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName contacts.example.com
+
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/contacts.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/contacts.example.com/privkey.pem
+
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "https"
+    ProxyPass        / http://127.0.0.1:5232/
+    ProxyPassReverse / http://127.0.0.1:5232/
+
+    LimitRequestBody 26214400   # ~25 MB, room for contact photos
+</VirtualHost>

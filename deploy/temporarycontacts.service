@@ -1,0 +1,17 @@
+# systemd unit — copy to /etc/systemd/system/temporarycontacts.service
+# then: systemctl daemon-reload && systemctl enable --now temporarycontacts
+[Unit]
+Description=Temporary Contacts (CardDAV + web control panel)
+After=network.target
+
+[Service]
+Type=simple
+User=temporarycontacts
+Group=temporarycontacts
+WorkingDirectory=/opt/temporarycontacts
+ExecStart=/opt/temporarycontacts/venv/bin/python run.py -c /opt/temporarycontacts/config.yml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

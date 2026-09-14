@@ -1,0 +1,21 @@
+# CardDAV engine
+radicale>=3.8,<4
+
+# Web control panel
+Flask>=3,<4
+
+# WSGI servers: waitress (behind a reverse proxy) / cheroot (standalone TLS)
+waitress>=3
+cheroot>=10
+
+# App metadata database (SQLite or PostgreSQL) via SQLAlchemy
+SQLAlchemy>=2,<3
+
+# Config, auth, vCard parsing
+PyYAML>=6
+passlib>=1.7
+bcrypt>=4
+vobject>=0.9
+
+# PostgreSQL driver — only needed when database.type is "postgresql"
+psycopg[binary]>=3.1

@@ -1,0 +1,51 @@
+# Temporary Contacts — configuration.
+# Copy to config.yml and edit. Relative paths resolve against this file's folder.
+
+# ---- Branding (shown in the web control panel + PWA) ----
+server_name: "Temporary Contacts"
+logo_path: ""                      # path to a PNG/SVG logo; blank = text-only header
+domain_name: "contacts.example.com"  # public domain of your server (used for links/PWA)
+
+# ---- Networking ----
+network:
+  bind_host: "127.0.0.1"           # where the app listens (localhost when behind a proxy)
+  bind_port: 5232
+  base_path: "/"                   # public base path (keep "/" unless hosting under a subpath)
+  reverse_proxy: true              # true: nginx/apache terminates TLS and proxies to us
+  trusted_proxy_count: 1           # number of trusted proxies in front (for X-Forwarded-*)
+
+# ---- TLS (only used when reverse_proxy: false — we serve HTTPS directly via cheroot) ----
+tls:
+  cert: ""                         # path to fullchain.pem
+  key: ""                          # path to privkey.pem
+
+# ---- Auth (CardDAV account + web login share these credentials) ----
+auth:
+  htpasswd_path: "./data/users.htpasswd"   # create with: htpasswd -B -c data/users.htpasswd <user>
+  secret_key: ""                   # Flask session secret; blank = auto-generated & persisted
+
+# ---- Contact storage (Radicale keeps vCards here as files) ----
+storage:
+  path: "./data/collections"
+
+# ---- Retention ----
+retention:
+  default_days: 7                  # applied to any new contact the server sees; a floor ("at least")
+  scan_interval_seconds: 300       # how often the background worker scans + expires
+
+# ---- App metadata database (retention/expiry/settings; NOT the contacts themselves) ----
+database:
+  type: "sqlite"                   # "sqlite" or "postgresql"
+  # SQLite:
+  path: "./data/app.db"
+  # PostgreSQL (used when type: postgresql). Either set url, or the fields below:
+  url: ""                          # e.g. postgresql+psycopg://user:pass@host:5432/dbname
+  host: "localhost"
+  port: 5432
+  name: "temporarycontacts"
+  user: "temporarycontacts"
+  password: ""
+
+# ---- Future: server-side sync to external providers (not yet implemented) ----
+sync:
+  providers: []                    # e.g. later: [{type: google, ...}, {type: outlook, ...}]

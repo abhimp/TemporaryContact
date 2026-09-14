@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1>Temporary contacts</h1>
+  <p class="muted">{{ contacts|length }} contact{{ '' if contacts|length == 1 else 's' }}</p>
+</div>
+
+{% if not contacts %}
+  <div class="card empty">
+    <p>No temporary contacts yet.</p>
+    <p class="muted">Add a contact on your phone (in the account synced to this server)
+    and it will appear here, expiring automatically after the default retention.</p>
+  </div>
+{% else %}
+  <ul class="contacts">
+    {% for c in contacts %}
+    {% set amt, unit = decompose(c.retention_seconds) %}
+    <li class="card contact">
+      <div class="contact-head">
+        <span class="name">{{ c.name }}</span>
+        <span class="badge {{ 'expired' if c.seconds_left is not none and c.seconds_left <= 0 else '' }}">
+          {{ format_left(c.seconds_left) }}
+        </span>
+      </div>
+      <div class="contact-actions">
+        <form method="post"
+              action="{{ url_for('set_retention', addressbook=c.addressbook, href=c.href) }}"
+              class="retention-form">
+          <label class="sr-only">Keep for</label>
+          <input type="number" name="amount" min="1" step="1" value="{{ amt }}" aria-label="amount">
+          <select name="unit" aria-label="unit">
+            {% for value, label in units %}
+              <option value="{{ value }}" {{ 'selected' if value == unit else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn">Set</button>
+        </form>
+        <form method="post"
+              action="{{ url_for('delete_contact', addressbook=c.addressbook, href=c.href) }}"
+              onsubmit="return confirm('Delete {{ c.name }} now?');">
+          <button type="submit" class="btn danger">Delete</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+{% endblock %}

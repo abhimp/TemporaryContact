@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card auth">
+  <h1>Sign in</h1>
+  <form method="post" action="{{ url_for('login') }}">
+    <label>Username
+      <input type="text" name="username" autocomplete="username" autocapitalize="none" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn primary">Sign in</button>
+  </form>
+  <p class="muted">Use the same username and password as your CardDAV account.</p>
+</div>
+{% endblock %}

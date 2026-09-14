@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><h1>Settings</h1></div>
+
+<div class="card">
+  <h2>Default retention</h2>
+  <p class="muted">Applied to every new contact this server sees. Contacts live
+  <em>at least</em> this long; you can change any contact individually.</p>
+  <form method="post" action="{{ url_for('settings') }}" class="retention-form">
+    <input type="number" name="amount" min="1" step="1" value="{{ amount }}" aria-label="amount">
+    <select name="unit" aria-label="unit">
+      {% for value, label in units %}
+        <option value="{{ value }}" {{ 'selected' if value == unit else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn primary">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Add this on your iPhone</h2>
+  <ol class="muted steps">
+    <li>Settings → Contacts → Accounts → Add Account → Other → Add CardDAV Account.</li>
+    <li>Server: your domain. Username &amp; password: your account.</li>
+    <li>Settings → Contacts → Default Account → choose this account.</li>
+    <li>In Safari, open this page and “Add to Home Screen” for an app icon.</li>
+  </ol>
+</div>
+{% endblock %}
