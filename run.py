@@ -12,6 +12,7 @@ import logging
 from temporarycontacts import contacts as contacts_api
 from temporarycontacts.config import load_config
 from temporarycontacts.db import Database
+from temporarycontacts.google_link import GoogleLink
 from temporarycontacts.radicale_app import build_radicale, build_storage
 from temporarycontacts.retention import RetentionService, RetentionWorker
 from temporarycontacts.wsgi import create_wsgi_app
@@ -22,7 +23,8 @@ def build(cfg):
     radicale_app, configuration = build_radicale(cfg)
     storage = build_storage(configuration)
     service = RetentionService(cfg, storage, db)
-    return db, radicale_app, service
+    google_link = GoogleLink(cfg, db)
+    return db, radicale_app, service, google_link
 
 
 def ensure_addressbooks(cfg, storage):
@@ -75,7 +77,7 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    _, radicale_app, service = build(cfg)
+    _, radicale_app, service, google_link = build(cfg)
     ensure_addressbooks(cfg, service.storage)
 
     if args.cleanup:
@@ -83,7 +85,7 @@ def main():
         return
 
     RetentionWorker(service).start()
-    app = create_wsgi_app(cfg, service, radicale_app)
+    app = create_wsgi_app(cfg, service, radicale_app, google_link)
     serve(cfg, app)
 
 

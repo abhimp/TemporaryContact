@@ -19,3 +19,8 @@ vobject>=0.9
 
 # PostgreSQL driver — only needed when database.type is "postgresql"
 psycopg[binary]>=3.1
+
+# Google People API integration ("Keep / Save to Google")
+google-auth>=2.30
+google-auth-oauthlib>=1.2
+requests>=2.31

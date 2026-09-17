@@ -35,6 +35,13 @@
           </select>
           <button type="submit" class="btn">Set</button>
         </form>
+        {% if google_enabled %}
+        <form method="post"
+              action="{{ url_for('keep_contact', addressbook=c.addressbook, href=c.href) }}"
+              onsubmit="return confirm('Save {{ c.name }} to Google and remove from Temporary?');">
+          <button type="submit" class="btn keep">Keep (Google)</button>
+        </form>
+        {% endif %}
         <form method="post"
               action="{{ url_for('delete_contact', addressbook=c.addressbook, href=c.href) }}"
               onsubmit="return confirm('Delete {{ c.name }} now?');">

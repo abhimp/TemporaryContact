@@ -96,10 +96,35 @@ database:
 
 The `psycopg` driver is already in `requirements.txt`.
 
+## Keep a contact permanently (Google)
+
+Because iOS always saves new contacts to the **Default Account** (with no
+per-contact picker), the intended workflow is: make **Temporary** your Default
+Account so everything expires by default, then **Keep** the ones worth saving by
+pushing them into your Google Contacts from the web panel.
+
+Set it up once:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/): create a
+   project, enable the **People API**, and configure the OAuth consent screen
+   (External; add yourself as a test user).
+2. Create an **OAuth 2.0 Client ID** of type **Web application**. Add an
+   **Authorized redirect URI** of `https://YOUR.DOMAIN/google/callback`.
+3. Put the credentials in `config.yml`:
+   ```yaml
+   google:
+     enabled: true
+     client_id: "....apps.googleusercontent.com"
+     client_secret: "..."
+     # redirect_uri defaults to https://<domain_name>/google/callback
+   ```
+4. Restart the service. In the web panel → **Settings → Connect Google**, then
+   each contact shows a **Keep (Google)** button that saves it to Google Contacts
+   and removes it from Temporary.
+
 ## Roadmap
 
-- Server-side sync with **Google** and **Outlook** (interface stubbed in
-  `temporarycontacts/sync/`).
+- Server-side sync with **Outlook** (interface stubbed in `temporarycontacts/sync/`).
 
 ## Maintenance
 

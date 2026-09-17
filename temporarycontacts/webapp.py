@@ -10,7 +10,9 @@ from flask import (Flask, Response, flash, redirect, render_template, request,
                    send_file, session, url_for)
 from passlib.apache import HtpasswdFile
 
+from . import contacts as contacts_api
 from .config import Config
+from .google_link import GoogleApiError, GoogleLink, GoogleNotConnected
 from .retention import RetentionService
 
 UNIT_SECONDS = {"hours": 3600, "days": 86400, "weeks": 604800}
@@ -97,7 +99,8 @@ def login_required(view):
     return wrapped
 
 
-def create_flask_app(cfg: Config, service: RetentionService) -> Flask:
+def create_flask_app(cfg: Config, service: RetentionService,
+                     google_link: GoogleLink | None = None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.secret_key = _secret_key(cfg)
 
@@ -108,6 +111,7 @@ def create_flask_app(cfg: Config, service: RetentionService) -> Flask:
             "units": UNITS,
             "format_left": format_left,
             "decompose": decompose,
+            "google_enabled": bool(google_link and google_link.enabled),
         }
 
     @app.route("/")
@@ -154,6 +158,67 @@ def create_flask_app(cfg: Config, service: RetentionService) -> Flask:
         flash("Contact deleted.")
         return redirect(url_for("contacts"))
 
+    @app.route("/contacts/<addressbook>/<href>/keep", methods=["POST"])
+    @login_required
+    def keep_contact(addressbook, href):
+        user = session["user"]
+        if not (google_link and google_link.enabled):
+            flash("Google is not configured on this server.")
+            return redirect(url_for("contacts"))
+        if not google_link.connection(user):
+            flash("Connect your Google account first (Settings).")
+            return redirect(url_for("settings"))
+        vobj = contacts_api.get_contact_vobject(service.storage, user, addressbook, href)
+        if vobj is None:
+            flash("That contact no longer exists.")
+            return redirect(url_for("contacts"))
+        try:
+            google_link.create_contact(user, vobj)
+        except GoogleNotConnected:
+            flash("Connect your Google account first (Settings).")
+            return redirect(url_for("settings"))
+        except GoogleApiError as exc:
+            flash(f"Google rejected the contact: {exc}")
+            return redirect(url_for("contacts"))
+        # Saved to Google — now remove it from Temporary.
+        service.delete_now(user, addressbook, href)
+        flash("Saved to Google Contacts and removed from Temporary.")
+        return redirect(url_for("contacts"))
+
+    @app.route("/google/connect")
+    @login_required
+    def google_connect():
+        if not (google_link and google_link.enabled):
+            flash("Google is not configured on this server.")
+            return redirect(url_for("settings"))
+        auth_url, state = google_link.authorization_url()
+        session["google_oauth_state"] = state
+        return redirect(auth_url)
+
+    @app.route("/google/callback")
+    @login_required
+    def google_callback():
+        state = session.pop("google_oauth_state", None)
+        if not (google_link and google_link.enabled) or not state:
+            flash("Google sign-in could not be completed.")
+            return redirect(url_for("settings"))
+        try:
+            email = google_link.finish_authorization(
+                session["user"], request.url, state)
+        except Exception as exc:  # noqa: BLE001 — surface any OAuth failure
+            flash(f"Google sign-in failed: {exc}")
+            return redirect(url_for("settings"))
+        flash(f"Connected Google account{' (' + email + ')' if email else ''}.")
+        return redirect(url_for("settings"))
+
+    @app.route("/google/disconnect", methods=["POST"])
+    @login_required
+    def google_disconnect():
+        if google_link:
+            google_link.disconnect(session["user"])
+        flash("Disconnected Google account.")
+        return redirect(url_for("settings"))
+
     @app.route("/settings", methods=["GET", "POST"])
     @login_required
     def settings():
@@ -166,7 +231,10 @@ def create_flask_app(cfg: Config, service: RetentionService) -> Flask:
                 flash("Enter a valid duration.")
             return redirect(url_for("settings"))
         amount, unit = decompose(service.default_seconds())
-        return render_template("settings.html", amount=amount, unit=unit)
+        google_conn = (google_link.connection(session["user"])
+                       if google_link and google_link.enabled else None)
+        return render_template("settings.html", amount=amount, unit=unit,
+                               google_connection=google_conn)
 
     @app.route("/manifest.webmanifest")
     def manifest():

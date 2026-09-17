@@ -46,9 +46,22 @@ class Config:
     pg_user: str = "temporarycontacts"
     pg_password: str = ""
 
+    # Google integration ("Keep / Save to Google")
+    google_enabled: bool = False
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
+
     @property
     def default_retention_seconds(self) -> float:
         return self.default_retention_days * 86400.0
+
+    @property
+    def google_callback_url(self) -> str:
+        """Public OAuth redirect URI; derived from the domain if not set."""
+        if self.google_redirect_uri:
+            return self.google_redirect_uri
+        return f"https://{self.domain_name}/google/callback"
 
     @property
     def use_standalone_tls(self) -> bool:
@@ -81,6 +94,7 @@ def load_config(path: str) -> Config:
     storage = data.get("storage", {}) or {}
     retention = data.get("retention", {}) or {}
     db = data.get("database", {}) or {}
+    google = data.get("google", {}) or {}
 
     base_path = net.get("base_path", "/") or "/"
     if not base_path.startswith("/"):
@@ -112,4 +126,8 @@ def load_config(path: str) -> Config:
         pg_name=db.get("name", "temporarycontacts"),
         pg_user=db.get("user", "temporarycontacts"),
         pg_password=db.get("password", "") or "",
+        google_enabled=bool(google.get("enabled", False)),
+        google_client_id=google.get("client_id", "") or "",
+        google_client_secret=google.get("client_secret", "") or "",
+        google_redirect_uri=google.get("redirect_uri", "") or "",
     )

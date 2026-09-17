@@ -90,6 +90,18 @@ def ensure_addressbook(storage, user: str,
         return True
 
 
+def get_contact_vobject(storage, user: str, addressbook: str, href: str):
+    """Return the vobject vCard for one contact, or None if it's gone."""
+    path = f"/{user}/{addressbook}/"
+    with storage.acquire_lock("r"):
+        for item in storage.discover(path, "1"):
+            if _is_collection(item):
+                continue
+            if item.href == href:
+                return item.vobject_item
+    return None
+
+
 def delete_contact(storage, user: str, addressbook: str, href: str) -> bool:
     """Delete a single contact. Returns True if it existed and was removed."""
     path = f"/{user}/{addressbook}/"

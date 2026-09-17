@@ -17,6 +17,25 @@
   </form>
 </div>
 
+{% if google_enabled %}
+<div class="card">
+  <h2>Google</h2>
+  {% if google_connection %}
+    <p class="muted">Connected{% if google_connection.email %} as
+      <strong>{{ google_connection.email }}</strong>{% endif %}. Use the
+      <em>Keep (Google)</em> button on a contact to save it permanently to Google
+      Contacts and remove it from Temporary.</p>
+    <form method="post" action="{{ url_for('google_disconnect') }}">
+      <button type="submit" class="btn danger">Disconnect Google</button>
+    </form>
+  {% else %}
+    <p class="muted">Connect your Google account so you can permanently keep a
+      contact by saving it to Google Contacts.</p>
+    <a class="btn primary" href="{{ url_for('google_connect') }}">Connect Google</a>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Add this on your iPhone</h2>
   <ol class="muted steps">

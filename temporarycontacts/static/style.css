@@ -86,6 +86,7 @@ input[type="number"], select, input[type="text"], input[type="password"] {
 .btn:hover { border-color: var(--muted); }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.keep { color: #15803d; border-color: #15803d; }
 
 .steps { padding-left: 20px; } .steps li { margin: 4px 0; }
 .empty p { margin: 6px 0; }

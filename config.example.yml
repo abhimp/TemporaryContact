@@ -46,6 +46,18 @@ database:
   user: "temporarycontacts"
   password: ""
 
+# ---- Google integration ("Keep / Save to Google") ----
+# Lets you permanently save a temporary contact into your Google Contacts.
+# Setup: create a Google Cloud project, enable the People API, create an OAuth
+# 2.0 "Web application" client, and add the redirect URI below to it.
+google:
+  enabled: false
+  client_id: ""
+  client_secret: ""
+  # Must exactly match an Authorized redirect URI in your Google OAuth client.
+  # Leave blank to use https://<domain_name>/google/callback
+  redirect_uri: ""
+
 # ---- Future: server-side sync to external providers (not yet implemented) ----
 sync:
-  providers: []                    # e.g. later: [{type: google, ...}, {type: outlook, ...}]
+  providers: []                    # e.g. later: [{type: outlook, ...}]

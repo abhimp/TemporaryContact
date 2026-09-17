@@ -41,6 +41,15 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(String(512))
 
 
+class GoogleCredential(Base):
+    """Per-user Google OAuth credentials (serialized authorized-user JSON)."""
+    __tablename__ = "google_credentials"
+
+    user: Mapped[str] = mapped_column(String(255), primary_key=True)
+    token_json: Mapped[str] = mapped_column(String(4096))
+    email: Mapped[str] = mapped_column(String(255), default="")
+
+
 class Database:
     def __init__(self, cfg: Config):
         url = cfg.sqlalchemy_url()
