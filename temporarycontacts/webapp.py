@@ -189,8 +189,12 @@ def create_flask_app(cfg: Config, service: RetentionService) -> Flask:
             return send_file(cfg.logo_path)
         return Response(DEFAULT_LOGO_SVG, mimetype="image/svg+xml")
 
-    @app.route("/.well-known/carddav")
+    # iOS auto-discovery (RFC 6764) issues PROPFIND — not GET — to this URL and
+    # expects a redirect to the real CardDAV endpoint. Accept every method so the
+    # PROPFIND isn't rejected with 405, and use 301 per the spec.
+    @app.route("/.well-known/carddav",
+               methods=["GET", "HEAD", "OPTIONS", "PROPFIND", "REPORT"])
     def wellknown_carddav():
-        return redirect((request.script_root or "") + "/dav/", code=302)
+        return redirect((request.script_root or "") + "/dav/", code=301)
 
     return app
