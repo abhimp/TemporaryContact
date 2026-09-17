@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 
+from temporarycontacts import contacts as contacts_api
 from temporarycontacts.config import load_config
 from temporarycontacts.db import Database
 from temporarycontacts.radicale_app import build_radicale, build_storage
@@ -22,6 +23,28 @@ def build(cfg):
     storage = build_storage(configuration)
     service = RetentionService(cfg, storage, db)
     return db, radicale_app, service
+
+
+def ensure_addressbooks(cfg, storage):
+    """Guarantee every configured user has a default address book to sync into."""
+    import os
+
+    from passlib.apache import HtpasswdFile
+
+    if not os.path.exists(cfg.htpasswd_path):
+        logging.warning("htpasswd file not found: %s", cfg.htpasswd_path)
+        return
+    try:
+        users = HtpasswdFile(cfg.htpasswd_path).users()
+    except Exception:
+        logging.exception("Could not read htpasswd users")
+        return
+    for user in users:
+        try:
+            if contacts_api.ensure_addressbook(storage, user):
+                logging.info("Created default address book for user %r", user)
+        except Exception:
+            logging.exception("Failed ensuring address book for %r", user)
 
 
 def serve(cfg, app):
@@ -53,6 +76,7 @@ def main():
 
     cfg = load_config(args.config)
     _, radicale_app, service = build(cfg)
+    ensure_addressbooks(cfg, service.storage)
 
     if args.cleanup:
         service.run_once()

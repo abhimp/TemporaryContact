@@ -8,6 +8,9 @@ from __future__ import annotations
 from radicale.storage import BaseCollection
 
 
+DEFAULT_ADDRESSBOOK = "addressbook"
+
+
 def _is_collection(obj) -> bool:
     return isinstance(obj, BaseCollection)
 
@@ -67,6 +70,24 @@ def iter_all_contacts(storage) -> list[dict]:
             user = _clean(home.path)
             out.extend(_iter_addressbook(storage, user, home.path))
     return out
+
+
+def ensure_addressbook(storage, user: str,
+                       displayname: str = "Temporary Contacts") -> bool:
+    """Make sure the user has a default address book to sync into.
+
+    iOS connects fine to an empty principal but has nothing to sync unless an
+    address book collection exists. Radicale doesn't auto-create one, so we do.
+    Returns True if it was created, False if it already existed.
+    """
+    path = f"/{user}/{DEFAULT_ADDRESSBOOK}/"
+    with storage.acquire_lock("w"):
+        for c in storage.discover(path, "0"):
+            if _is_collection(c):
+                return False
+        storage.create_collection(
+            path, props={"tag": "VADDRESSBOOK", "D:displayname": displayname})
+        return True
 
 
 def delete_contact(storage, user: str, addressbook: str, href: str) -> bool:
