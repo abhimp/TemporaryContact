@@ -22,8 +22,8 @@ def build(cfg):
     db = Database(cfg)
     radicale_app, configuration = build_radicale(cfg)
     storage = build_storage(configuration)
-    service = RetentionService(cfg, storage, db)
     google_link = GoogleLink(cfg, db)
+    service = RetentionService(cfg, storage, db, google_link)
     return db, radicale_app, service, google_link
 
 

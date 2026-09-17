@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><h1>Edit contact</h1></div>
+
+<div class="card">
+  <form method="post"
+        action="{{ url_for('edit_contact', addressbook=addressbook, href=href) }}"
+        class="edit-form">
+    <label>First name
+      <input type="text" name="given" value="{{ form.given }}" autocapitalize="words">
+    </label>
+    <label>Last name
+      <input type="text" name="family" value="{{ form.family }}" autocapitalize="words">
+    </label>
+    <label>Organization
+      <input type="text" name="organization" value="{{ form.organization }}">
+    </label>
+    <label>Title
+      <input type="text" name="title" value="{{ form.title }}">
+    </label>
+    <label>Phone numbers <span class="muted">(one per line)</span>
+      <textarea name="phones" rows="3">{{ form.phones }}</textarea>
+    </label>
+    <label>Emails <span class="muted">(one per line)</span>
+      <textarea name="emails" rows="3">{{ form.emails }}</textarea>
+    </label>
+    <label>URLs <span class="muted">(one per line)</span>
+      <textarea name="urls" rows="2">{{ form.urls }}</textarea>
+    </label>
+    <div class="edit-actions">
+      <button type="submit" class="btn primary">Save</button>
+      <a class="btn" href="{{ url_for('contacts') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

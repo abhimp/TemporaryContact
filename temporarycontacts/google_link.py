@@ -20,8 +20,13 @@ log = logging.getLogger("temporarycontacts.google")
 
 SCOPES = ["https://www.googleapis.com/auth/contacts",
           "https://www.googleapis.com/auth/userinfo.email", "openid"]
-PEOPLE_CREATE_URL = "https://people.googleapis.com/v1/people:createContact"
+PEOPLE_BASE = "https://people.googleapis.com/v1"
+PEOPLE_CREATE_URL = f"{PEOPLE_BASE}/people:createContact"
 USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+# The Person fields we manage; used as updatePersonFields on update.
+PERSON_FIELDS = ["names", "phoneNumbers", "emailAddresses", "urls",
+                 "organizations", "addresses", "birthdays"]
 
 
 class GoogleLink:
@@ -103,20 +108,45 @@ class GoogleLink:
             log.exception("Could not fetch Google account email")
         return ""
 
-    # ---- the Keep action ----
+    # ---- Google Contacts writes ----
 
-    def create_contact(self, user: str, vobject_item) -> None:
-        """Create the contact in the user's Google Contacts. Raises on failure."""
+    def create_contact(self, user: str, vobject_item) -> str:
+        """Create the contact in Google Contacts; return its resourceName."""
         creds = self._load_credentials(user)
         if creds is None:
             raise GoogleNotConnected()
         person = vcard_to_person(vobject_item)
         session = AuthorizedSession(creds)
         resp = session.post(PEOPLE_CREATE_URL, json=person, timeout=30)
-        # Persist any refreshed token so we don't re-prompt next time.
-        self._store(user, creds)
+        self._store(user, creds)  # persist any refreshed token
         if not resp.ok:
-            raise GoogleApiError(f"{resp.status_code}: {resp.text[:300]}")
+            raise GoogleApiError(f"create {resp.status_code}: {resp.text[:300]}")
+        return resp.json().get("resourceName", "")
+
+    def update_contact(self, user: str, resource_name: str, vobject_item) -> None:
+        """Push the current vCard onto an existing Google contact."""
+        creds = self._load_credentials(user)
+        if creds is None:
+            raise GoogleNotConnected()
+        session = AuthorizedSession(creds)
+        # updateContact requires the contact's current etag.
+        get = session.get(f"{PEOPLE_BASE}/{resource_name}",
+                          params={"personFields": "metadata"}, timeout=30)
+        if get.status_code == 404:
+            raise GoogleContactGone(resource_name)
+        if not get.ok:
+            raise GoogleApiError(f"get {get.status_code}: {get.text[:300]}")
+        person = vcard_to_person(vobject_item)
+        person["etag"] = get.json().get("etag")
+        fields = ",".join(k for k in person if k in PERSON_FIELDS)
+        resp = session.patch(
+            f"{PEOPLE_BASE}/{resource_name}:updateContact",
+            params={"updatePersonFields": fields}, json=person, timeout=30)
+        self._store(user, creds)
+        if resp.status_code == 404:
+            raise GoogleContactGone(resource_name)
+        if not resp.ok:
+            raise GoogleApiError(f"update {resp.status_code}: {resp.text[:300]}")
 
 
 class GoogleNotConnected(Exception):
@@ -124,6 +154,11 @@ class GoogleNotConnected(Exception):
 
 
 class GoogleApiError(Exception):
+    pass
+
+
+class GoogleContactGone(Exception):
+    """The linked Google contact no longer exists (deleted on Google's side)."""
     pass
 
 

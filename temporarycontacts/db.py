@@ -8,7 +8,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, String, UniqueConstraint, create_engine
+from sqlalchemy import (Boolean, DateTime, Float, String, UniqueConstraint,
+                        create_engine)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from .config import Config
@@ -30,6 +31,8 @@ class RetentionRecord(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expiry: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     retention_seconds: Mapped[float] = mapped_column(Float)
+    # A "kept" contact was saved to Google and is permanent — never expires.
+    kept: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (UniqueConstraint("user", "addressbook", "href", name="uix_contact"),)
 
@@ -48,6 +51,21 @@ class GoogleCredential(Base):
     user: Mapped[str] = mapped_column(String(255), primary_key=True)
     token_json: Mapped[str] = mapped_column(String(4096))
     email: Mapped[str] = mapped_column(String(255), default="")
+
+
+class GoogleContactLink(Base):
+    """Links a Temporary contact to its Google Contacts copy for ongoing push."""
+    __tablename__ = "google_contact_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user: Mapped[str] = mapped_column(String(255), index=True)
+    addressbook: Mapped[str] = mapped_column(String(255))
+    href: Mapped[str] = mapped_column(String(512))
+    resource_name: Mapped[str] = mapped_column(String(255))
+    # CardDAV item etag at last successful push — used to detect changes.
+    source_etag: Mapped[str] = mapped_column(String(512), default="")
+
+    __table_args__ = (UniqueConstraint("user", "addressbook", "href", name="uix_link"),)
 
 
 class Database:

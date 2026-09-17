@@ -18,11 +18,16 @@
     <li class="card contact">
       <div class="contact-head">
         <span class="name">{{ c.name }}</span>
-        <span class="badge {{ 'expired' if c.seconds_left is not none and c.seconds_left <= 0 else '' }}">
-          {{ format_left(c.seconds_left) }}
-        </span>
+        {% if c.kept %}
+          <span class="badge kept">Kept · Google</span>
+        {% else %}
+          <span class="badge {{ 'expired' if c.seconds_left is not none and c.seconds_left <= 0 else '' }}">
+            {{ format_left(c.seconds_left) }}
+          </span>
+        {% endif %}
       </div>
       <div class="contact-actions">
+        {% if not c.kept %}
         <form method="post"
               action="{{ url_for('set_retention', addressbook=c.addressbook, href=c.href) }}"
               class="retention-form">
@@ -35,10 +40,12 @@
           </select>
           <button type="submit" class="btn">Set</button>
         </form>
-        {% if google_enabled %}
+        {% endif %}
+        <a class="btn" href="{{ url_for('edit_contact', addressbook=c.addressbook, href=c.href) }}">Edit</a>
+        {% if google_enabled and not c.kept %}
         <form method="post"
               action="{{ url_for('keep_contact', addressbook=c.addressbook, href=c.href) }}"
-              onsubmit="return confirm('Save {{ c.name }} to Google and remove from Temporary?');">
+              onsubmit="return confirm('Save {{ c.name }} to Google? It will stay synced and stop expiring.');">
           <button type="submit" class="btn keep">Keep (Google)</button>
         </form>
         {% endif %}

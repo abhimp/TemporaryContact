@@ -38,6 +38,7 @@ def _contact_dict(user: str, addressbook: str, item) -> dict:
         "href": item.href,
         "uid": item.uid or "",
         "name": _display_name(item),
+        "etag": item.etag,
     }
 
 
@@ -100,6 +101,33 @@ def get_contact_vobject(storage, user: str, addressbook: str, href: str):
             if item.href == href:
                 return item.vobject_item
     return None
+
+
+def get_contact(storage, user: str, addressbook: str, href: str):
+    """Return (vobject_item, etag) for one contact, or (None, None)."""
+    path = f"/{user}/{addressbook}/"
+    with storage.acquire_lock("r"):
+        for item in storage.discover(path, "1"):
+            if _is_collection(item):
+                continue
+            if item.href == href:
+                return item.vobject_item, item.etag
+    return None, None
+
+
+def save_contact(storage, user: str, addressbook: str, href: str, text: str):
+    """Overwrite an existing contact's vCard. Returns the new etag, or None."""
+    import radicale.item as ritem
+
+    path = f"/{user}/{addressbook}/"
+    with storage.acquire_lock("w"):
+        collections = [c for c in storage.discover(path, "0") if _is_collection(c)]
+        if not collections:
+            return None
+        collection = collections[0]
+        item = ritem.Item(collection=collection, text=text)
+        collection.upload(href, item)
+        return item.etag
 
 
 def delete_contact(storage, user: str, addressbook: str, href: str) -> bool:

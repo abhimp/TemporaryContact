@@ -101,7 +101,17 @@ The `psycopg` driver is already in `requirements.txt`.
 Because iOS always saves new contacts to the **Default Account** (with no
 per-contact picker), the intended workflow is: make **Temporary** your Default
 Account so everything expires by default, then **Keep** the ones worth saving by
-pushing them into your Google Contacts from the web panel.
+linking them to your Google Contacts from the web panel.
+
+**Keep = link, not move.** A kept contact stays in Temporary (so it's still on
+your phone), **stops expiring**, and is linked to a Google contact. Any later
+change — edited in the web panel or on the phone — is **automatically pushed to
+Google** (one-way, Temporary → Google) on the next sync pass. Deleting a kept
+contact removes it from Temporary but leaves the Google copy intact.
+
+You can also **Edit** any contact directly in the web panel (name, organization,
+phones, emails, URLs); edits sync to your phone via CardDAV, and to Google too if
+the contact is linked.
 
 Set it up once:
 
@@ -119,8 +129,8 @@ Set it up once:
      # redirect_uri defaults to https://<domain_name>/google/callback
    ```
 4. Restart the service. In the web panel → **Settings → Connect Google**, then
-   each contact shows a **Keep (Google)** button that saves it to Google Contacts
-   and removes it from Temporary.
+   each contact shows a **Keep (Google)** button that links it to Google Contacts
+   (permanent, auto-synced).
 
 ## Roadmap
 
