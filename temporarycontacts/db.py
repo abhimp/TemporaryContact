@@ -8,9 +8,13 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime
 
+import logging
+
 from sqlalchemy import (Boolean, DateTime, Float, String, UniqueConstraint,
-                        create_engine)
+                        create_engine, inspect, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
+log = logging.getLogger("temporarycontacts.db")
 
 from .config import Config
 
@@ -75,7 +79,29 @@ class Database:
         self.engine = create_engine(url, connect_args=connect_args,
                                     pool_pre_ping=True, future=True)
         Base.metadata.create_all(self.engine)
+        self._migrate()
         self._Session = sessionmaker(bind=self.engine, expire_on_commit=False, future=True)
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a table's first creation.
+
+        create_all() makes new tables but won't alter existing ones, so upgrades
+        that add a column to an existing DB need this.
+        """
+        insp = inspect(self.engine)
+        # retention.kept (added for Google-linked/permanent contacts)
+        if "retention" in insp.get_table_names():
+            cols = {c["name"] for c in insp.get_columns("retention")}
+            if "kept" not in cols:
+                default = "false" if self.engine.dialect.name == "postgresql" else "0"
+                try:
+                    with self.engine.begin() as conn:
+                        conn.execute(text(
+                            f"ALTER TABLE retention ADD COLUMN kept BOOLEAN "
+                            f"NOT NULL DEFAULT {default}"))
+                    log.info("Migrated: added retention.kept column")
+                except Exception:
+                    log.exception("Failed adding retention.kept column")
 
     @contextmanager
     def session(self):
