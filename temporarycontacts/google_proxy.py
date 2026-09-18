@@ -261,6 +261,9 @@ class GatewayMiddleware:
         body_in = GoogleProxy._read_body(environ)
         environ["wsgi.input"] = io.BytesIO(body_in)
         environ["CONTENT_LENGTH"] = str(len(body_in))
+        # Ask the inner app (Radicale) for an uncompressed body so we can parse
+        # and splice it; otherwise ET.fromstring() chokes on gzip bytes.
+        environ.pop("HTTP_ACCEPT_ENCODING", None)
 
         captured, chunks = {}, []
 
@@ -282,6 +285,14 @@ class GatewayMiddleware:
             start_response(captured["status"], captured["headers"])
             return [inner]
 
+        # Defensively decompress if the inner app compressed anyway.
+        if inner[:2] == b"\x1f\x8b":
+            import gzip as _gzip
+            try:
+                inner = _gzip.decompress(inner)
+            except Exception:  # noqa: BLE001
+                pass
+
         google_resp = self.proxy.describe_collection(user, body_in, script)
         log.info("gateway: home inject describe_collection -> %s",
                  "ok" if google_resp is not None else "None")
@@ -294,8 +305,9 @@ class GatewayMiddleware:
             except ET.ParseError:
                 log.warning("Could not splice Google collection into home listing")
 
+        # We return an identity (uncompressed) body, so drop any encoding header.
         headers = [(k, v) for k, v in captured["headers"]
-                   if k.lower() != "content-length"]
+                   if k.lower() not in ("content-length", "content-encoding")]
         headers.append(("Content-Length", str(len(inner))))
         start_response(captured["status"], headers)
         return [inner]
