@@ -70,9 +70,10 @@ body {
 .segmented { display: flex; gap: 0; margin-top: 10px; padding: 2px;
   background: var(--fill); border-radius: 9px; }
 .segmented button {
-  flex: 1; padding: 7px 6px; border: 0; border-radius: 7px; cursor: pointer; background: transparent;
-  color: var(--text); font-size: 13px; font-weight: 590; -webkit-appearance: none;
-  transition: background .18s;
+  flex: 1; min-width: 0; padding: 7px 4px; border: 0; border-radius: 7px; cursor: pointer;
+  background: transparent; color: var(--text); font-size: 12.5px; font-weight: 590;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  -webkit-appearance: none; transition: background .18s;
 }
 .segmented button .n { color: var(--muted); font-weight: 500; }
 .segmented button.active { background: var(--card);
@@ -99,10 +100,12 @@ details.row { }
   place-items: center; font-weight: 600; font-size: 15px; color: #fff; background: #a2a2ab; }
 .avatar.g { background: var(--indigo); }
 .avatar.d { background: var(--faint); color: var(--card); }
-.who { min-width: 0; flex: 1; }
-.name { font-size: 17px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
-.trail { font-size: 15px; font-weight: 500; white-space: nowrap; }
+.who { min-width: 0; flex: 1; overflow: hidden; }
+.name { display: block; font-size: 17px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { display: block; font-size: 13px; color: var(--muted); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trail { font-size: 15px; font-weight: 500; white-space: nowrap; flex: none; }
 .trail.ok { color: var(--green); } .trail.soon { color: var(--orange); }
 .trail.crit { color: var(--red); } .trail.perm { color: var(--muted); font-weight: 400; }
 .chev { flex: none; color: var(--faint); transition: transform .2s; }
