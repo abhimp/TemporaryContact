@@ -255,7 +255,8 @@ def create_flask_app(cfg: Config, service: RetentionService,
         try:
             n = service.refresh_google_cache(user)
             flash(f"Refreshed {n} Google contact{'' if n == 1 else 's'}.")
-        except (GoogleApiError, GoogleNotConnected) as exc:
+        except Exception as exc:  # noqa: BLE001 — surface any failure to the user
+            app.logger.exception("Google cache refresh failed")
             flash(f"Couldn't refresh Google contacts: {exc}")
         return redirect(url_for("contacts"))
 

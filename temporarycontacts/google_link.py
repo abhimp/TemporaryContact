@@ -177,25 +177,50 @@ class GoogleLink:
         return CARDDAV_PRINCIPAL.format(email=quote(email))
 
     def carddav_list(self, user: str) -> list[dict]:
-        """All Google contacts as [{google_href, etag, vcard, name}]."""
+        """All Google contacts as [{google_href, etag, vcard, name}].
+
+        Uses the two-step pattern iOS uses with Google: PROPFIND Depth:1 to list
+        item hrefs, then addressbook-multiget REPORT to fetch their vCards.
+        """
         session, email, creds = self._session_email(user)
         if session is None:
             raise GoogleNotConnected()
-        body = ('<?xml version="1.0" encoding="utf-8"?>'
-                '<C:addressbook-query xmlns:D="DAV:" '
-                'xmlns:C="urn:ietf:params:xml:ns:carddav">'
-                '<D:prop><D:getetag/><C:address-data/></D:prop>'
-                '<C:filter/></C:addressbook-query>')
+        list_url = self._list_url(email)
+
+        propfind = ('<?xml version="1.0" encoding="utf-8"?>'
+                    '<D:propfind xmlns:D="DAV:"><D:prop><D:getetag/>'
+                    '<D:resourcetype/></D:prop></D:propfind>')
         try:
-            resp = session.request(
-                "REPORT", self._list_url(email),
+            r1 = session.request(
+                "PROPFIND", list_url,
                 headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
-                data=body, timeout=60)
+                data=propfind, timeout=60)
         finally:
             self._store(user, creds)
-        if resp.status_code != 207:
-            raise GoogleApiError(f"list {resp.status_code}: {resp.text[:300]}")
-        return _parse_addressbook(resp.content)
+        log.info("carddav_list PROPFIND -> %s", r1.status_code)
+        if r1.status_code != 207:
+            raise GoogleApiError(f"list-propfind {r1.status_code}: {r1.text[:300]}")
+        hrefs = _parse_item_hrefs(r1.content)
+        if not hrefs:
+            return []
+
+        parts = ['<?xml version="1.0" encoding="utf-8"?>',
+                 '<C:addressbook-multiget xmlns:D="DAV:" '
+                 'xmlns:C="urn:ietf:params:xml:ns:carddav">',
+                 '<D:prop><D:getetag/><C:address-data/></D:prop>']
+        parts += [f"<D:href>{h}</D:href>" for h in hrefs]
+        parts.append("</C:addressbook-multiget>")
+        try:
+            r2 = session.request(
+                "REPORT", list_url,
+                headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+                data="".join(parts), timeout=60)
+        finally:
+            self._store(user, creds)
+        log.info("carddav_list multiget -> %s (%d hrefs)", r2.status_code, len(hrefs))
+        if r2.status_code != 207:
+            raise GoogleApiError(f"list-multiget {r2.status_code}: {r2.text[:300]}")
+        return _parse_addressbook(r2.content)
 
     def carddav_create(self, user: str, vcard_text: str, uid: str) -> str:
         """PUT a new vCard into Google; returns the Google href."""
@@ -236,6 +261,29 @@ class GoogleNotConnected(Exception):
 
 class GoogleApiError(Exception):
     pass
+
+
+def _parse_item_hrefs(xml_bytes: bytes) -> list[str]:
+    """From a PROPFIND Depth:1 multistatus, the hrefs of contact items only
+    (skip the collection itself and any nested collections)."""
+    out: list[str] = []
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return out
+    D = "{DAV:}"
+    for resp in root.findall(f"{D}response"):
+        href_el = resp.find(f"{D}href")
+        if href_el is None or not href_el.text:
+            continue
+        href = href_el.text.strip()
+        if href.endswith("/"):
+            continue  # a collection, not an item
+        rtype = resp.find(f"{D}propstat/{D}prop/{D}resourcetype")
+        if rtype is not None and rtype.find(f"{D}collection") is not None:
+            continue
+        out.append(href)
+    return out
 
 
 def _parse_addressbook(xml_bytes: bytes) -> list[dict]:
