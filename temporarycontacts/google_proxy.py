@@ -168,6 +168,8 @@ class GoogleProxy:
         finally:
             self.google_link._store(user, creds)  # persist any refreshed token
 
+        log.info("google proxy: %s %s -> %s (%d bytes)", method,
+                 subpath, resp.status_code, len(resp.content or b""))
         out = resp.content or b""
         ctype = resp.headers.get("Content-Type", "")
         if out and ("xml" in ctype or method in ("PROPFIND", "REPORT")):
@@ -202,7 +204,9 @@ class GoogleProxy:
             return None
         finally:
             self.google_link._store(user, creds)
+        log.info("describe_collection: Google PROPFIND -> %s", resp.status_code)
         if resp.status_code != 207:
+            log.warning("describe_collection non-207 body: %s", resp.text[:300])
             return None
         rewritten = self.rewrite_from_google(resp.content, script_name, user)
         try:
@@ -233,13 +237,20 @@ class GatewayMiddleware:
         path = environ.get("PATH_INFO", "")
         script = environ.get("SCRIPT_NAME", "")
 
+        method = environ.get("REQUEST_METHOD")
         m = self._GOOGLE_RE.match(path)
         if m:
             user, sub = m.group(1), (m.group(2) or "/")
+            log.info("gateway: route to Google proxy: %s %s%s (sub=%s)",
+                     method, script, path, sub)
             return self.proxy.handle(environ, start_response, script, user, sub)
 
         home = self._HOME_RE.match(path)
-        if (environ.get("REQUEST_METHOD") == "PROPFIND" and home
+        if method == "PROPFIND" and home:
+            log.info("gateway: home PROPFIND path=%s depth=%s user=%s google_avail=%s",
+                     path, environ.get("HTTP_DEPTH"), home.group(1),
+                     self._google_available(home.group(1)))
+        if (method == "PROPFIND" and home
                 and environ.get("HTTP_DEPTH") == "1"
                 and self._google_available(home.group(1))):
             return self._inject_home(environ, start_response, script, home.group(1))
@@ -272,11 +283,14 @@ class GatewayMiddleware:
             return [inner]
 
         google_resp = self.proxy.describe_collection(user, body_in, script)
+        log.info("gateway: home inject describe_collection -> %s",
+                 "ok" if google_resp is not None else "None")
         if google_resp is not None:
             try:
                 root = ET.fromstring(inner)
                 root.append(google_resp)
                 inner = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                log.info("gateway: spliced Google book into home listing")
             except ET.ParseError:
                 log.warning("Could not splice Google collection into home listing")
 
