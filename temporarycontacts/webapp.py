@@ -264,20 +264,22 @@ def create_flask_app(cfg: Config, service: RetentionService,
         if not (google_link and google_link.enabled):
             flash("Google is not configured on this server.")
             return redirect(url_for("settings"))
-        auth_url, state = google_link.authorization_url()
+        auth_url, state, code_verifier = google_link.authorization_url()
         session["google_oauth_state"] = state
+        session["google_code_verifier"] = code_verifier
         return redirect(auth_url)
 
     @app.route("/google/callback")
     @login_required
     def google_callback():
         state = session.pop("google_oauth_state", None)
+        code_verifier = session.pop("google_code_verifier", None)
         if not (google_link and google_link.enabled) or not state:
             flash("Google sign-in could not be completed.")
             return redirect(url_for("settings"))
         try:
             email = google_link.finish_authorization(
-                session["user"], request.query_string.decode(), state)
+                session["user"], request.query_string.decode(), state, code_verifier)
         except Exception as exc:  # noqa: BLE001 — surface any OAuth failure
             flash(f"Google sign-in failed: {exc}")
             return redirect(url_for("settings"))

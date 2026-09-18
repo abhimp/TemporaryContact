@@ -55,12 +55,19 @@ class GoogleLink:
 
     # ---- OAuth flow ----
 
-    def authorization_url(self) -> tuple[str, str]:
-        return self._flow().authorization_url(
+    def authorization_url(self) -> tuple[str, str, str]:
+        """Return (auth_url, state, code_verifier). The verifier (PKCE) must be
+        persisted and handed back to finish_authorization on the callback."""
+        flow = self._flow()
+        url, state = flow.authorization_url(
             access_type="offline", include_granted_scopes="true", prompt="consent")
+        return url, state, flow.code_verifier
 
-    def finish_authorization(self, user: str, query_string: str, state: str) -> str:
+    def finish_authorization(self, user: str, query_string: str, state: str,
+                             code_verifier: str | None = None) -> str:
         flow = self._flow(state=state)
+        # PKCE: the verifier generated at authorization time must be replayed here.
+        flow.code_verifier = code_verifier
         # Rebuild the callback URL from the configured (https) public URL. Behind a
         # TLS-terminating reverse proxy the request reaches us as http, which the
         # OAuth library rejects as "insecure_transport"; the public URL is https.
