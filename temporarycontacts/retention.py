@@ -281,10 +281,11 @@ class RetentionService:
 
     def list_google_cache(self, user: str) -> list[dict]:
         with self.db.session() as s:
-            rows = (s.query(GoogleCacheEntry).filter_by(user=user)
-                    .order_by(GoogleCacheEntry.name).all())
-            return [{"id": r.id, "name": r.name or "Contact",
-                     "google_href": r.google_href} for r in rows]
+            rows = s.query(GoogleCacheEntry).filter_by(user=user).all()
+        items = [{"id": r.id, "name": r.name or "Contact",
+                  "google_href": r.google_href} for r in rows]
+        items.sort(key=lambda c: c["name"].casefold())  # case-insensitive
+        return items
 
 
 class RetentionWorker:
