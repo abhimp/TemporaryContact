@@ -41,12 +41,13 @@
             {{ chevron() }}
           </summary>
           <div class="row-actions">
-            <form method="post" class="field"
+            <form method="post" class="field expire-form"
                   action="{{ url_for('set_retention', addressbook=c.addressbook, href=c.href) }}">
               <span class="lbl">Expire on</span>
-              <input type="date" name="date"
-                     value="{{ c.expiry.strftime('%Y-%m-%d') if c.expiry else '' }}"
-                     aria-label="expiry date">
+              <input type="datetime-local" name="local" class="expire-input"
+                     data-utc="{{ c.expiry.isoformat() if c.expiry else '' }}"
+                     aria-label="expiry date and time">
+              <input type="hidden" name="expiry_utc">
               <button type="submit" class="btn sm">Set</button>
             </form>
             <div class="act-row">
@@ -185,6 +186,27 @@
     apply();
   });
   apply();
+
+  // "Expire on" pickers: show the stored UTC expiry in local time, and convert
+  // the chosen local time back to UTC on submit.
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  Array.prototype.forEach.call(document.querySelectorAll('.expire-form'), function (f) {
+    var inp = f.querySelector('.expire-input');
+    var hid = f.querySelector('input[name="expiry_utc"]');
+    if (inp.dataset.utc) {
+      var d = new Date(inp.dataset.utc);
+      if (!isNaN(d.getTime())) {
+        inp.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+                  + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      }
+    }
+    f.addEventListener('submit', function () {
+      if (inp.value) {
+        var d2 = new Date(inp.value);
+        if (!isNaN(d2.getTime())) hid.value = d2.toISOString();
+      }
+    });
+  });
 })();
 </script>
 {% endblock %}

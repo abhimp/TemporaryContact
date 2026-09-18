@@ -208,14 +208,21 @@ def create_flask_app(cfg: Config, service: RetentionService,
     @app.route("/contacts/<addressbook>/<href>/retention", methods=["POST"])
     @login_required
     def set_retention(addressbook, href):
-        raw = request.form.get("date", "")
-        try:
-            day = datetime.strptime(raw, "%Y-%m-%d")
-        except ValueError:
-            flash("Pick a valid date.")
+        # Browser JS sends the chosen local time already converted to a UTC ISO
+        # string in 'expiry_utc'; 'local' is a no-JS fallback (assumed UTC).
+        expiry = None
+        for raw in (request.form.get("expiry_utc", ""), request.form.get("local", "")):
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            expiry = (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+            break
+        if expiry is None:
+            flash("Pick a valid date and time.")
             return redirect(url_for("contacts"))
-        # Expire at the end of the chosen day (UTC).
-        expiry = day.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
         service.set_expiry(session["user"], addressbook, href, expiry)
         flash("Expiry updated.")
         return redirect(url_for("contacts"))

@@ -116,8 +116,8 @@ details[open] .chev { transform: rotate(90deg); }
 .row-actions .field { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row-actions .lbl { font-size: 13px; color: var(--muted); margin-right: 2px; }
 .act-row { display: flex; gap: 8px; flex-wrap: wrap; }
-input[type="number"], input[type="search"], input[type="date"], select, input[type="text"],
-input[type="password"], textarea {
+input[type="number"], input[type="search"], input[type="date"], input[type="datetime-local"],
+select, input[type="text"], input[type="password"], textarea {
   padding: 8px 10px; border: .5px solid var(--sep); border-radius: 9px;
   background: var(--card); color: var(--text); font-size: 16px; -webkit-appearance: none;
 }
