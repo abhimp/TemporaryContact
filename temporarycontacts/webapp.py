@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+from datetime import datetime, timezone
 from functools import wraps
 
 import vobject
@@ -207,13 +208,16 @@ def create_flask_app(cfg: Config, service: RetentionService,
     @app.route("/contacts/<addressbook>/<href>/retention", methods=["POST"])
     @login_required
     def set_retention(addressbook, href):
-        seconds = _parse_seconds(request.form)
-        mode = "extend" if request.form.get("mode") == "extend" else "set"
-        if seconds:
-            service.set_retention(session["user"], addressbook, href, seconds, mode)
-            flash("Expiry extended." if mode == "extend" else "Expiry updated.")
-        else:
-            flash("Enter a valid duration.")
+        raw = request.form.get("date", "")
+        try:
+            day = datetime.strptime(raw, "%Y-%m-%d")
+        except ValueError:
+            flash("Pick a valid date.")
+            return redirect(url_for("contacts"))
+        # Expire at the end of the chosen day (UTC).
+        expiry = day.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        service.set_expiry(session["user"], addressbook, href, expiry)
+        flash("Expiry updated.")
         return redirect(url_for("contacts"))
 
     @app.route("/contacts/<addressbook>/<href>/delete", methods=["POST"])

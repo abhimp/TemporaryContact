@@ -227,6 +227,20 @@ class RetentionService:
                 s.delete(rec)
         return ok
 
+    def set_expiry(self, user: str, addressbook: str, href: str,
+                   expiry_dt: datetime) -> None:
+        """Set an absolute expiry datetime (from the 'Expire on' date picker)."""
+        now = _now()
+        with self.db.session() as s:
+            rec = (s.query(RetentionRecord)
+                   .filter_by(user=user, addressbook=addressbook, href=href).first())
+            if rec is None:
+                rec = RetentionRecord(user=user, addressbook=addressbook, href=href,
+                                      uid="", name="", first_seen=now)
+                s.add(rec)
+            rec.expiry = expiry_dt
+            rec.retention_seconds = max(0.0, (expiry_dt - now).total_seconds())
+
     def delete_now(self, user: str, addressbook: str, href: str) -> bool:
         # Manual delete → keep a recoverable copy in the archive.
         self._archive(user, addressbook, href, "deleted")
