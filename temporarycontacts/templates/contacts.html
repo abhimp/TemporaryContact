@@ -11,6 +11,9 @@
     {% if google_enabled %}
     <button type="button" data-group="google">Google <span class="n">{{ google_contacts|length }}</span></button>
     {% endif %}
+    {% if trash %}
+    <button type="button" data-group="deleted">Deleted <span class="n">{{ trash|length }}</span></button>
+    {% endif %}
   </div>
 </div>
 
@@ -43,7 +46,8 @@
                 <option value="{{ value }}" {{ 'selected' if value == unit else '' }}>{{ label }}</option>
               {% endfor %}
             </select>
-            <button type="submit" class="btn sm">Set</button>
+            <button type="submit" name="mode" value="set" class="btn sm">Set</button>
+            <button type="submit" name="mode" value="extend" class="btn sm" title="Add this to the current expiry">+ Extend</button>
           </form>
           <a class="btn sm" href="{{ url_for('edit_contact', addressbook=c.addressbook, href=c.href) }}">Edit</a>
           {% if google_enabled %}
@@ -102,6 +106,32 @@
 </section>
 {% endif %}
 
+{% if trash %}
+<section data-section="deleted" hidden>
+  <div class="section-title">Deleted · recoverable for a while</div>
+  <ul class="contacts">
+    {% for d in trash %}
+    <li class="contact" data-group="deleted" data-name="{{ d.name|lower }}">
+      <div class="contact-head">
+        <span class="avatar" style="background:var(--border);color:var(--muted);">{{ (d.name[:1] or '?')|upper }}</span>
+        <span class="name">{{ d.name }}</span>
+        <span class="badge">{{ d.reason }} · {{ d.deleted_at.strftime('%b %-d') }}</span>
+      </div>
+      <div class="contact-actions">
+        <form method="post" action="{{ url_for('restore_contact', trash_id=d.id) }}">
+          <button type="submit" class="btn sm">Restore</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_forever', trash_id=d.id) }}"
+              onsubmit="return confirm('Permanently delete {{ d.name }}?');">
+          <button type="submit" class="btn sm danger">Delete forever</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <div class="no-results" id="noResults">No contacts match “<span id="qEcho"></span>”.</div>
 
 <script>
@@ -118,7 +148,9 @@
     var term = (q.value || '').trim().toLowerCase();
     var visible = 0;
     items.forEach(function (it) {
-      var okGroup = group === 'all' || it.dataset.group === group;
+      // "All" = active contacts (Temporary + Google), never the Deleted archive.
+      var okGroup = group === 'all' ? it.dataset.group !== 'deleted'
+                                    : it.dataset.group === group;
       var okTerm = !term || it.dataset.name.indexOf(term) !== -1;
       var show = okGroup && okTerm;
       it.hidden = !show;
@@ -126,7 +158,7 @@
     });
     sections.forEach(function (sec) {
       var g = sec.dataset.section;
-      var groupOk = group === 'all' || group === g;
+      var groupOk = group === 'all' ? g !== 'deleted' : group === g;
       sec.hidden = !groupOk;
       var empty = sec.querySelector('.empty');
       if (empty) empty.hidden = !!term;      // hide "nothing yet" cards while searching

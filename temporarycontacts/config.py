@@ -35,6 +35,8 @@ class Config:
     # Retention
     default_retention_days: float = 7.0
     scan_interval_seconds: int = 300
+    # How long deleted/expired contacts stay recoverable in the "Deleted" archive.
+    trash_retention_days: float = 60.0
 
     # Database
     database_type: str = "sqlite"
@@ -118,6 +120,7 @@ def load_config(path: str) -> Config:
         storage_path=resolve(storage.get("path", "./data/collections")),
         default_retention_days=float(retention.get("default_days", 7)),
         scan_interval_seconds=int(retention.get("scan_interval_seconds", 300)),
+        trash_retention_days=float(retention.get("trash_retention_days", 60)),
         database_type=db.get("type", "sqlite"),
         database_url=db.get("url", "") or "",
         database_path=resolve(db.get("path", "./data/app.db")),

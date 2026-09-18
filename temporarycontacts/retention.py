@@ -15,8 +15,8 @@ from datetime import datetime, timedelta, timezone
 
 from . import contacts as contacts_api
 from .config import Config
-from .db import (Database, GoogleCacheEntry, RetentionRecord, get_setting,
-                 set_setting)
+from .db import (Database, DeletedContact, GoogleCacheEntry, RetentionRecord,
+                 get_setting, set_setting)
 from .google_link import GoogleApiError, GoogleNotConnected
 
 log = logging.getLogger("temporarycontacts.retention")
@@ -88,12 +88,13 @@ class RetentionService:
         now = _now()
         with self.db.session() as s:
             # Compare in Python so SQLite's tz-naive storage can't skew the cutoff.
-            targets = [(r.user, r.addressbook, r.href)
+            targets = [(r.user, r.addressbook, r.href, r.name)
                        for r in s.query(RetentionRecord).all()
                        if _ensure_aware(r.expiry) <= now]
         deleted = 0
-        for user, addressbook, href in targets:
+        for user, addressbook, href, name in targets:
             try:
+                self._archive(user, addressbook, href, "expired", name)
                 contacts_api.delete_contact(self.storage, user, addressbook, href)
                 deleted += 1
             except Exception:
@@ -101,7 +102,7 @@ class RetentionService:
                               user, addressbook, href)
         if targets:
             with self.db.session() as s:
-                for user, addressbook, href in targets:
+                for user, addressbook, href, _name in targets:
                     rec = (s.query(RetentionRecord)
                            .filter_by(user=user, addressbook=addressbook, href=href)
                            .first())
@@ -113,6 +114,64 @@ class RetentionService:
         # Never touches Google — that stays live behind the proxy.
         self.reconcile()
         self.expire()
+        self.purge_trash()
+
+    # ---- Deleted archive (recoverable trash) ----
+
+    def _archive(self, user: str, addressbook: str, href: str, reason: str,
+                 fallback_name: str = "") -> None:
+        vobj, _etag = contacts_api.get_contact(self.storage, user, addressbook, href)
+        if vobj is None:
+            return
+        name = fallback_name
+        try:
+            if hasattr(vobj, "fn") and vobj.fn.value:
+                name = vobj.fn.value
+        except Exception:  # noqa: BLE001
+            pass
+        with self.db.session() as s:
+            s.add(DeletedContact(user=user, name=name or "Contact",
+                                 vcard=vobj.serialize(), reason=reason,
+                                 deleted_at=_now()))
+
+    def purge_trash(self) -> int:
+        cutoff = _now() - timedelta(days=self.cfg.trash_retention_days)
+        removed = 0
+        with self.db.session() as s:
+            for row in s.query(DeletedContact).all():
+                if _ensure_aware(row.deleted_at) <= cutoff:
+                    s.delete(row)
+                    removed += 1
+        return removed
+
+    def list_trash(self, user: str) -> list[dict]:
+        with self.db.session() as s:
+            rows = (s.query(DeletedContact).filter_by(user=user)
+                    .order_by(DeletedContact.deleted_at.desc()).all())
+            return [{"id": r.id, "name": r.name or "Contact", "reason": r.reason,
+                     "deleted_at": _ensure_aware(r.deleted_at)} for r in rows]
+
+    def restore(self, user: str, trash_id: int) -> bool:
+        with self.db.session() as s:
+            row = s.get(DeletedContact, trash_id)
+            if row is None or row.user != user:
+                return False
+            vcard = row.vcard
+        contacts_api.create_local_contact(self.storage, user,
+                                          contacts_api.DEFAULT_ADDRESSBOOK, vcard)
+        with self.db.session() as s:
+            row = s.get(DeletedContact, trash_id)
+            if row:
+                s.delete(row)
+        return True
+
+    def delete_forever(self, user: str, trash_id: int) -> bool:
+        with self.db.session() as s:
+            row = s.get(DeletedContact, trash_id)
+            if row is None or row.user != user:
+                return False
+            s.delete(row)
+            return True
 
     # ---- Temporary contact operations for the web UI ----
 
@@ -137,8 +196,11 @@ class RetentionService:
         return result
 
     def set_retention(self, user: str, addressbook: str, href: str,
-                      seconds: float) -> None:
+                      seconds: float, mode: str = "set") -> None:
+        """mode='set': expiry = now + duration. mode='extend': add duration to
+        the current expiry (or now, if already past)."""
         now = _now()
+        seconds = float(seconds)
         with self.db.session() as s:
             rec = (s.query(RetentionRecord)
                    .filter_by(user=user, addressbook=addressbook, href=href).first())
@@ -146,10 +208,17 @@ class RetentionService:
                 rec = RetentionRecord(user=user, addressbook=addressbook, href=href,
                                       uid="", name="", first_seen=now)
                 s.add(rec)
-            rec.retention_seconds = float(seconds)
-            rec.expiry = now + timedelta(seconds=float(seconds))
+            current = _ensure_aware(rec.expiry)
+            if mode == "extend" and current is not None:
+                rec.expiry = max(current, now) + timedelta(seconds=seconds)
+                if not rec.retention_seconds:
+                    rec.retention_seconds = seconds
+            else:
+                rec.retention_seconds = seconds
+                rec.expiry = now + timedelta(seconds=seconds)
 
-    def delete_now(self, user: str, addressbook: str, href: str) -> bool:
+    def _delete_local(self, user: str, addressbook: str, href: str) -> bool:
+        """Remove a Temporary contact from storage + its record (no archiving)."""
         ok = contacts_api.delete_contact(self.storage, user, addressbook, href)
         with self.db.session() as s:
             rec = (s.query(RetentionRecord)
@@ -157,6 +226,11 @@ class RetentionService:
             if rec:
                 s.delete(rec)
         return ok
+
+    def delete_now(self, user: str, addressbook: str, href: str) -> bool:
+        # Manual delete → keep a recoverable copy in the archive.
+        self._archive(user, addressbook, href, "deleted")
+        return self._delete_local(user, addressbook, href)
 
     # ---- moves between the two books ----
 
@@ -170,7 +244,7 @@ class RetentionService:
         uid = (getattr(getattr(vobj, "uid", None), "value", None)
                or href.rsplit(".", 1)[0])
         self.google_link.carddav_create(user, vobj.serialize(), uid)
-        self.delete_now(user, addressbook, href)
+        self._delete_local(user, addressbook, href)  # moved, not deleted — no archive
 
     def make_temporary(self, user: str, cache_id: int) -> bool:
         """Move a cached Google contact back to Temporary, deleting it in Google."""

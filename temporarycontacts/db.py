@@ -48,6 +48,18 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(String(512))
 
 
+class DeletedContact(Base):
+    """A recoverable archive of removed contacts (expired or manually deleted)."""
+    __tablename__ = "deleted_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user: Mapped[str] = mapped_column(String(255), index=True)
+    name: Mapped[str] = mapped_column(String(512), default="")
+    vcard: Mapped[str] = mapped_column(Text, default="")
+    reason: Mapped[str] = mapped_column(String(32), default="")  # "expired" | "deleted"
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class GoogleCredential(Base):
     """Per-user Google OAuth credentials (serialized authorized-user JSON)."""
     __tablename__ = "google_credentials"

@@ -200,16 +200,18 @@ def create_flask_app(cfg: Config, service: RetentionService,
         items = service.list_for_user(user)
         google_contacts = (service.list_google_cache(user)
                            if google_link and google_link.enabled else [])
+        trash = service.list_trash(user)
         return render_template("contacts.html", contacts=items,
-                               google_contacts=google_contacts)
+                               google_contacts=google_contacts, trash=trash)
 
     @app.route("/contacts/<addressbook>/<href>/retention", methods=["POST"])
     @login_required
     def set_retention(addressbook, href):
         seconds = _parse_seconds(request.form)
+        mode = "extend" if request.form.get("mode") == "extend" else "set"
         if seconds:
-            service.set_retention(session["user"], addressbook, href, seconds)
-            flash("Retention updated.")
+            service.set_retention(session["user"], addressbook, href, seconds, mode)
+            flash("Expiry extended." if mode == "extend" else "Expiry updated.")
         else:
             flash("Enter a valid duration.")
         return redirect(url_for("contacts"))
@@ -326,6 +328,20 @@ def create_flask_app(cfg: Config, service: RetentionService,
             google_link.disconnect(session["user"])
         flash("Disconnected Google account.")
         return redirect(url_for("settings"))
+
+    @app.route("/trash/<int:trash_id>/restore", methods=["POST"])
+    @login_required
+    def restore_contact(trash_id):
+        ok = service.restore(session["user"], trash_id)
+        flash("Restored to Temporary." if ok else "That item is no longer available.")
+        return redirect(url_for("contacts"))
+
+    @app.route("/trash/<int:trash_id>/delete", methods=["POST"])
+    @login_required
+    def delete_forever(trash_id):
+        service.delete_forever(session["user"], trash_id)
+        flash("Deleted permanently.")
+        return redirect(url_for("contacts"))
 
     @app.route("/settings", methods=["GET", "POST"])
     @login_required

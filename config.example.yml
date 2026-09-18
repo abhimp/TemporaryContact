@@ -32,6 +32,7 @@ storage:
 retention:
   default_days: 7                  # applied to any new contact the server sees; a floor ("at least")
   scan_interval_seconds: 300       # how often the background worker scans + expires
+  trash_retention_days: 60         # deleted/expired contacts stay recoverable in "Deleted" this long
 
 # ---- App metadata database (retention/expiry/settings; NOT the contacts themselves) ----
 database:
