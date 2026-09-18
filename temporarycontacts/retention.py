@@ -297,7 +297,9 @@ class RetentionService:
         with self.db.session() as s:
             rows = s.query(GoogleCacheEntry).filter_by(user=user).all()
         items = [{"id": r.id, "name": r.name or "Contact",
-                  "google_href": r.google_href} for r in rows]
+                  "google_href": r.google_href,
+                  "search": contacts_api.vcard_search_text(r.name or "", r.vcard or "")}
+                 for r in rows]
         items.sort(key=lambda c: c["name"].casefold())  # case-insensitive
         return items
 

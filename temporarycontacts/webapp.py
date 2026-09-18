@@ -9,8 +9,8 @@ from functools import wraps
 
 import vobject
 
-from flask import (Flask, Response, flash, redirect, render_template, request,
-                   send_file, session, url_for)
+from flask import (Flask, Response, abort, flash, redirect, render_template,
+                   request, send_file, session, url_for)
 from passlib.apache import HtpasswdFile
 
 from . import contacts as contacts_api
@@ -163,6 +163,19 @@ def create_flask_app(cfg: Config, service: RetentionService,
                      google_link: GoogleLink | None = None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.secret_key = _secret_key(cfg)
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",   # Lax so the OAuth callback still carries the session
+        SESSION_COOKIE_SECURE=True,      # HTTPS only (production is always HTTPS)
+    )
+
+    @app.before_request
+    def _csrf():
+        if "_csrf" not in session:
+            session["_csrf"] = secrets.token_urlsafe(32)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            if request.form.get("_csrf") != session["_csrf"]:
+                abort(400, "Invalid or missing CSRF token.")
 
     @app.context_processor
     def inject_globals():
@@ -172,6 +185,7 @@ def create_flask_app(cfg: Config, service: RetentionService,
             "format_left": format_left,
             "decompose": decompose,
             "google_enabled": bool(google_link and google_link.enabled),
+            "csrf_token": session.get("_csrf", ""),
         }
 
     @app.route("/")

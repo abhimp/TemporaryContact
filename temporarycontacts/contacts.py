@@ -32,14 +32,35 @@ def _display_name(item) -> str:
 
 
 def _contact_dict(user: str, addressbook: str, item) -> dict:
+    name = _display_name(item)
+    search_parts = [name]
+    try:
+        vobj = item.vobject_item
+        for key in ("tel", "email"):
+            for comp in vobj.contents.get(key, []):
+                if comp.value:
+                    search_parts.append(str(comp.value))
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "user": user,
         "addressbook": addressbook,
         "href": item.href,
         "uid": item.uid or "",
-        "name": _display_name(item),
+        "name": name,
+        "search": " ".join(search_parts).lower(),
         "etag": item.etag,
     }
+
+
+def vcard_search_text(name: str, vcard: str) -> str:
+    """Lowercased name + phone/email values from a raw vCard, for searching."""
+    parts = [name]
+    for line in vcard.splitlines():
+        upper = line.upper()
+        if upper.startswith("TEL") or upper.startswith("EMAIL"):
+            parts.append(line.split(":", 1)[-1])
+    return " ".join(parts).lower()
 
 
 def _iter_addressbook(storage, user: str, home_path: str) -> list[dict]:

@@ -38,5 +38,19 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    // Add the CSRF token to every POST form (server rejects POSTs without it).
+    (function () {
+      var t = "{{ csrf_token }}";
+      Array.prototype.forEach.call(document.querySelectorAll('form[method="post"], form[method="POST"]'),
+        function (f) {
+          if (!f.querySelector('input[name="_csrf"]')) {
+            var i = document.createElement('input');
+            i.type = 'hidden'; i.name = '_csrf'; i.value = t;
+            f.appendChild(i);
+          }
+        });
+    })();
+  </script>
 </body>
 </html>
