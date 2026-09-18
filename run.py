@@ -74,10 +74,23 @@ def main():
     parser.add_argument("-c", "--config", default="config.yml")
     parser.add_argument("--cleanup", action="store_true",
                         help="run one retention pass and exit (for cron)")
+    parser.add_argument("--google-check", action="store_true",
+                        help="probe Google's CardDAV endpoint for each connected user and exit")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    _, radicale_app, service, google_link = build(cfg)
+    db, radicale_app, service, google_link = build(cfg)
+
+    if args.google_check:
+        from temporarycontacts.db import GoogleCredential
+        with db.session() as s:
+            users = [c.user for c in s.query(GoogleCredential).all()]
+        if not users:
+            print("No users are connected to Google yet.")
+        for user in users:
+            print(f"[{user}]", google_link.carddav_probe(user))
+        return
+
     ensure_addressbooks(cfg, service.storage)
 
     if args.cleanup:

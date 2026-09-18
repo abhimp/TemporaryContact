@@ -18,8 +18,13 @@ from .db import Database, GoogleCredential
 
 log = logging.getLogger("temporarycontacts.google")
 
-SCOPES = ["https://www.googleapis.com/auth/contacts",
+SCOPES = ["https://www.googleapis.com/auth/carddav",
+          "https://www.googleapis.com/auth/contacts",
           "https://www.googleapis.com/auth/userinfo.email", "openid"]
+
+# Google's CardDAV service (what iOS itself talks to for Google accounts).
+CARDDAV_ROOT = "https://www.googleapis.com/carddav/v1"
+CARDDAV_PRINCIPAL = CARDDAV_ROOT + "/principals/{email}/lists/default/"
 PEOPLE_BASE = "https://people.googleapis.com/v1"
 PEOPLE_CREATE_URL = f"{PEOPLE_BASE}/people:createContact"
 USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
@@ -119,6 +124,36 @@ class GoogleLink:
         except Exception:
             log.exception("Could not fetch Google account email")
         return ""
+
+    # ---- diagnostics ----
+
+    def carddav_probe(self, user: str) -> dict:
+        """PROPFIND Google's CardDAV endpoint to confirm OAuth + scope work."""
+        creds = self._load_credentials(user)
+        if creds is None:
+            return {"ok": False, "error": "user not connected to Google"}
+        session = AuthorizedSession(creds)
+        email = self._fetch_email(creds) or ""
+        url = CARDDAV_PRINCIPAL.format(email=email)
+        body = ('<?xml version="1.0" encoding="utf-8"?>'
+                '<propfind xmlns="DAV:"><prop><displayname/><resourcetype/>'
+                '</prop></propfind>')
+        try:
+            resp = session.request(
+                "PROPFIND", url,
+                headers={"Depth": "0", "Content-Type": "application/xml; charset=utf-8"},
+                data=body, timeout=30)
+        except Exception as exc:  # noqa: BLE001
+            self._store(user, creds)
+            return {"ok": False, "url": url, "error": str(exc)}
+        self._store(user, creds)
+        hint = ""
+        if resp.status_code == 403:
+            hint = "403 — the OAuth token likely lacks the carddav scope; reconnect Google."
+        elif resp.status_code == 401:
+            hint = "401 — token invalid/expired; reconnect Google."
+        return {"ok": resp.ok, "status": resp.status_code, "email": email,
+                "url": url, "hint": hint, "body": resp.text[:400]}
 
     # ---- Google Contacts writes ----
 
