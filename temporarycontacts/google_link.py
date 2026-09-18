@@ -8,6 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+
+# Google may return granted scopes in a different order/set than requested
+# (e.g. adding openid); without this, requests-oauthlib raises "Scope has changed".
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from google.auth.transport.requests import AuthorizedSession
 from google.oauth2.credentials import Credentials
@@ -114,7 +119,10 @@ class GoogleLink:
             if not row:
                 return None
             token = row.token_json
-        return Credentials.from_authorized_user_info(json.loads(token), scopes=SCOPES)
+        # Do NOT override scopes here — a token refreshes with the scopes it was
+        # actually granted. Forcing the current SCOPES list (e.g. after adding
+        # carddav) makes refresh request un-granted scopes → invalid_scope.
+        return Credentials.from_authorized_user_info(json.loads(token))
 
     def _fetch_email(self, creds: Credentials) -> str:
         try:
