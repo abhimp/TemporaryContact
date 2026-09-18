@@ -59,10 +59,15 @@ class GoogleLink:
         return self._flow().authorization_url(
             access_type="offline", include_granted_scopes="true", prompt="consent")
 
-    def finish_authorization(self, user: str, authorization_response_url: str,
-                             state: str) -> str:
+    def finish_authorization(self, user: str, query_string: str, state: str) -> str:
         flow = self._flow(state=state)
-        flow.fetch_token(authorization_response=authorization_response_url)
+        # Rebuild the callback URL from the configured (https) public URL. Behind a
+        # TLS-terminating reverse proxy the request reaches us as http, which the
+        # OAuth library rejects as "insecure_transport"; the public URL is https.
+        response_url = self.cfg.google_callback_url
+        if query_string:
+            response_url += "?" + query_string
+        flow.fetch_token(authorization_response=response_url)
         creds = flow.credentials
         email = self._fetch_email(creds)
         self._store(user, creds, email)

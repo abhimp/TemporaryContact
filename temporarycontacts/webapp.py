@@ -277,7 +277,7 @@ def create_flask_app(cfg: Config, service: RetentionService,
             return redirect(url_for("settings"))
         try:
             email = google_link.finish_authorization(
-                session["user"], request.url, state)
+                session["user"], request.query_string.decode(), state)
         except Exception as exc:  # noqa: BLE001 — surface any OAuth failure
             flash(f"Google sign-in failed: {exc}")
             return redirect(url_for("settings"))
