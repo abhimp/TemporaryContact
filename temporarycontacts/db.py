@@ -10,8 +10,8 @@ from datetime import datetime
 
 import logging
 
-from sqlalchemy import (Boolean, DateTime, Float, String, UniqueConstraint,
-                        create_engine, inspect, text)
+from sqlalchemy import (Boolean, DateTime, Float, String, Text,
+                        UniqueConstraint, create_engine, inspect, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 log = logging.getLogger("temporarycontacts.db")
@@ -57,19 +57,22 @@ class GoogleCredential(Base):
     email: Mapped[str] = mapped_column(String(255), default="")
 
 
-class GoogleContactLink(Base):
-    """Links a Temporary contact to its Google Contacts copy for ongoing push."""
-    __tablename__ = "google_contact_links"
+class GoogleCacheEntry(Base):
+    """Side cache of a user's Google contacts, for WEB display only.
+
+    Never read by the CardDAV sync path (that proxies live to Google). Populated
+    on demand by the Refresh button.
+    """
+    __tablename__ = "google_cache"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user: Mapped[str] = mapped_column(String(255), index=True)
-    addressbook: Mapped[str] = mapped_column(String(255))
-    href: Mapped[str] = mapped_column(String(512))
-    resource_name: Mapped[str] = mapped_column(String(255))
-    # CardDAV item etag at last successful push — used to detect changes.
-    source_etag: Mapped[str] = mapped_column(String(512), default="")
+    google_href: Mapped[str] = mapped_column(String(512))
+    name: Mapped[str] = mapped_column(String(512), default="")
+    vcard: Mapped[str] = mapped_column(Text, default="")
+    etag: Mapped[str] = mapped_column(String(512), default="")
 
-    __table_args__ = (UniqueConstraint("user", "addressbook", "href", name="uix_link"),)
+    __table_args__ = (UniqueConstraint("user", "google_href", name="uix_cache"),)
 
 
 class Database:

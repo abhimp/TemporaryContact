@@ -115,6 +115,28 @@ def get_contact(storage, user: str, addressbook: str, href: str):
     return None, None
 
 
+def create_local_contact(storage, user: str, addressbook: str, text: str) -> str:
+    """Create a new contact in a local collection (creating it if needed).
+
+    Returns the new item's href. Used by "Make Temporary" to recreate a Google
+    contact in the local Temporary book.
+    """
+    import radicale.item as ritem
+
+    path = f"/{user}/{addressbook}/"
+    with storage.acquire_lock("w"):
+        collections = [c for c in storage.discover(path, "0") if _is_collection(c)]
+        if not collections:
+            storage.create_collection(
+                path, props={"tag": "VADDRESSBOOK", "D:displayname": "Temporary Contacts"})
+            collections = [c for c in storage.discover(path, "0") if _is_collection(c)]
+        collection = collections[0]
+        item = ritem.Item(collection=collection, text=text)
+        href = f"{item.uid or 'contact'}.vcf"
+        collection.upload(href, item)
+        return href
+
+
 def save_contact(storage, user: str, addressbook: str, href: str, text: str):
     """Overwrite an existing contact's vCard. Returns the new etag, or None."""
     import radicale.item as ritem

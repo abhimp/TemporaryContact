@@ -96,22 +96,29 @@ database:
 
 The `psycopg` driver is already in `requirements.txt`.
 
-## Keep a contact permanently (Google)
+## Google contacts
 
-Because iOS always saves new contacts to the **Default Account** (with no
-per-contact picker), the intended workflow is: make **Temporary** your Default
-Account so everything expires by default, then **Keep** the ones worth saving by
-linking them to your Google Contacts from the web panel.
+When Google is configured, the account exposes **two address books**, merged into
+one list on the phone:
 
-**Keep = link, not move.** A kept contact stays in Temporary (so it's still on
-your phone), **stops expiring**, and is linked to a Google contact. Any later
-change — edited in the web panel or on the phone — is **automatically pushed to
-Google** (one-way, Temporary → Google) on the next sync pass. Deleting a kept
-contact removes it from Temporary but leaves the Google copy intact.
+- **Temporary** — local, editable, auto-expiring (as above).
+- **Google** — a **live CardDAV proxy** to your Google Contacts. The phone reads
+  and edits these straight through to Google (nothing is stored here); Google-side
+  changes appear on the phone on its next sync.
 
-You can also **Edit** any contact directly in the web panel (name, organization,
-phones, emails, URLs); edits sync to your phone via CardDAV, and to Google too if
-the contact is linked.
+Because iOS always saves new contacts to the **Default Account**, set **Temporary**
+as your Default Account so everything expires by default, then move the keepers:
+
+- **Keep (Google)** — moves a Temporary contact into Google (created in Google,
+  removed from Temporary).
+- **Make Temporary** — moves a Google contact back to Temporary (recreated locally
+  as an expiring contact, deleted from Google).
+
+**The web page** shows Temporary contacts live, plus a **cached** view of your
+Google contacts. That cache is only ever updated when you press **Refresh** —
+never automatically — and it is display-only; it never affects what the phone
+syncs (the phone always talks to Google live via the proxy). You can also **Edit**
+a Temporary contact in the web panel.
 
 Set it up once:
 

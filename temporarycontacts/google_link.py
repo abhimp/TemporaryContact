@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+from urllib.parse import quote
+from xml.etree import ElementTree as ET
 
 # Google may return granted scopes in a different order/set than requested
 # (e.g. adding openid); without this, requests-oauthlib raises "Scope has changed".
@@ -28,15 +30,10 @@ SCOPES = ["https://www.googleapis.com/auth/carddav",
           "https://www.googleapis.com/auth/userinfo.email", "openid"]
 
 # Google's CardDAV service (what iOS itself talks to for Google accounts).
-CARDDAV_ROOT = "https://www.googleapis.com/carddav/v1"
+GOOGLE_HOST = "https://www.googleapis.com"
+CARDDAV_ROOT = GOOGLE_HOST + "/carddav/v1"
 CARDDAV_PRINCIPAL = CARDDAV_ROOT + "/principals/{email}/lists/default/"
-PEOPLE_BASE = "https://people.googleapis.com/v1"
-PEOPLE_CREATE_URL = f"{PEOPLE_BASE}/people:createContact"
-USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
-
-# The Person fields we manage; used as updatePersonFields on update.
-PERSON_FIELDS = ["names", "phoneNumbers", "emailAddresses", "urls",
-                 "organizations", "addresses", "birthdays"]
+USERINFO_URL = GOOGLE_HOST + "/oauth2/v3/userinfo"
 
 
 class GoogleLink:
@@ -163,45 +160,74 @@ class GoogleLink:
         return {"ok": resp.ok, "status": resp.status_code, "email": email,
                 "url": url, "hint": hint, "body": resp.text[:400]}
 
-    # ---- Google Contacts writes ----
+    # ---- Google CardDAV reads/writes (web cache + move buttons) ----
+    #
+    # These are used ONLY by the web UI (cache display, Keep, Make Temporary).
+    # The live iPhone sync path is the reverse-proxy in google_proxy.py and does
+    # not go through here.
 
-    def create_contact(self, user: str, vobject_item) -> str:
-        """Create the contact in Google Contacts; return its resourceName."""
+    def _session_email(self, user: str):
         creds = self._load_credentials(user)
-        if creds is None:
+        conn = self.connection(user)
+        if creds is None or not conn or not conn.get("email"):
+            return None, None, None
+        return AuthorizedSession(creds), conn["email"], creds
+
+    def _list_url(self, email: str) -> str:
+        return CARDDAV_PRINCIPAL.format(email=quote(email))
+
+    def carddav_list(self, user: str) -> list[dict]:
+        """All Google contacts as [{google_href, etag, vcard, name}]."""
+        session, email, creds = self._session_email(user)
+        if session is None:
             raise GoogleNotConnected()
-        person = vcard_to_person(vobject_item)
-        session = AuthorizedSession(creds)
-        resp = session.post(PEOPLE_CREATE_URL, json=person, timeout=30)
-        self._store(user, creds)  # persist any refreshed token
-        if not resp.ok:
+        body = ('<?xml version="1.0" encoding="utf-8"?>'
+                '<C:addressbook-query xmlns:D="DAV:" '
+                'xmlns:C="urn:ietf:params:xml:ns:carddav">'
+                '<D:prop><D:getetag/><C:address-data/></D:prop>'
+                '<C:filter/></C:addressbook-query>')
+        try:
+            resp = session.request(
+                "REPORT", self._list_url(email),
+                headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+                data=body, timeout=60)
+        finally:
+            self._store(user, creds)
+        if resp.status_code != 207:
+            raise GoogleApiError(f"list {resp.status_code}: {resp.text[:300]}")
+        return _parse_addressbook(resp.content)
+
+    def carddav_create(self, user: str, vcard_text: str, uid: str) -> str:
+        """PUT a new vCard into Google; returns the Google href."""
+        session, email, creds = self._session_email(user)
+        if session is None:
+            raise GoogleNotConnected()
+        href = self._list_url(email) + quote(uid) + ".vcf"
+        try:
+            resp = session.put(
+                href,
+                headers={"Content-Type": "text/vcard; charset=utf-8",
+                         "If-None-Match": "*"},
+                data=vcard_text.encode("utf-8"), timeout=30)
+        finally:
+            self._store(user, creds)
+        if resp.status_code not in (200, 201, 204):
             raise GoogleApiError(f"create {resp.status_code}: {resp.text[:300]}")
-        return resp.json().get("resourceName", "")
+        return href
 
-    def update_contact(self, user: str, resource_name: str, vobject_item) -> None:
-        """Push the current vCard onto an existing Google contact."""
-        creds = self._load_credentials(user)
-        if creds is None:
+    def carddav_delete(self, user: str, google_href: str) -> bool:
+        """DELETE a Google contact by href (path or full URL)."""
+        session, email, creds = self._session_email(user)
+        if session is None:
             raise GoogleNotConnected()
-        session = AuthorizedSession(creds)
-        # updateContact requires the contact's current etag.
-        get = session.get(f"{PEOPLE_BASE}/{resource_name}",
-                          params={"personFields": "metadata"}, timeout=30)
-        if get.status_code == 404:
-            raise GoogleContactGone(resource_name)
-        if not get.ok:
-            raise GoogleApiError(f"get {get.status_code}: {get.text[:300]}")
-        person = vcard_to_person(vobject_item)
-        person["etag"] = get.json().get("etag")
-        fields = ",".join(k for k in person if k in PERSON_FIELDS)
-        resp = session.patch(
-            f"{PEOPLE_BASE}/{resource_name}:updateContact",
-            params={"updatePersonFields": fields}, json=person, timeout=30)
-        self._store(user, creds)
-        if resp.status_code == 404:
-            raise GoogleContactGone(resource_name)
-        if not resp.ok:
-            raise GoogleApiError(f"update {resp.status_code}: {resp.text[:300]}")
+        url = google_href if google_href.startswith("http") else GOOGLE_HOST + google_href
+        try:
+            resp = session.request("DELETE", url, timeout=30)
+        finally:
+            self._store(user, creds)
+        if resp.status_code not in (200, 204, 404):
+            raise GoogleApiError(f"delete {resp.status_code}: {resp.text[:300]}")
+        return True
 
 
 class GoogleNotConnected(Exception):
@@ -212,82 +238,38 @@ class GoogleApiError(Exception):
     pass
 
 
-class GoogleContactGone(Exception):
-    """The linked Google contact no longer exists (deleted on Google's side)."""
-    pass
-
-
-def _val(component, attr):
-    return getattr(component, attr).value if hasattr(component, attr) else None
-
-
-def vcard_to_person(v) -> dict:
-    """Map a vobject vCard to a Google People API Person body."""
-    person: dict = {}
-
-    name: dict = {}
-    if hasattr(v, "n") and v.n.value:
-        n = v.n.value
-        name = {"givenName": n.given or "", "familyName": n.family or "",
-                "middleName": n.additional or "",
-                "honorificPrefix": n.prefix or "", "honorificSuffix": n.suffix or ""}
-    if hasattr(v, "fn") and v.fn.value:
-        name["unstructuredName"] = v.fn.value
-    if name:
-        person["names"] = [name]
-
-    phones = [{"value": c.value, "type": _label(c)} for c in v.contents.get("tel", [])]
-    if phones:
-        person["phoneNumbers"] = phones
-
-    emails = [{"value": c.value, "type": _label(c)} for c in v.contents.get("email", [])]
-    if emails:
-        person["emailAddresses"] = emails
-
-    urls = [{"value": c.value, "type": _label(c)} for c in v.contents.get("url", [])]
-    if urls:
-        person["urls"] = urls
-
-    orgs = []
-    for c in v.contents.get("org", []):
-        val = c.value
-        org_name = val[0] if isinstance(val, list) and val else (val or "")
-        dept = val[1] if isinstance(val, list) and len(val) > 1 else ""
-        org = {"name": org_name}
-        if dept:
-            org["department"] = dept
-        orgs.append(org)
-    if hasattr(v, "title") and v.title.value:
-        if orgs:
-            orgs[0]["title"] = v.title.value
-        else:
-            orgs = [{"title": v.title.value}]
-    if orgs:
-        person["organizations"] = orgs
-
-    addresses = []
-    for c in v.contents.get("adr", []):
-        a = c.value
-        addresses.append({
-            "streetAddress": a.street or "", "city": a.city or "",
-            "region": a.region or "", "postalCode": a.code or "",
-            "country": a.country or "", "type": _label(c),
-        })
-    if addresses:
-        person["addresses"] = addresses
-
-    if hasattr(v, "bday") and v.bday.value:
-        person["birthdays"] = [{"text": v.bday.value}]
-
-    return person
-
-
-def _label(component) -> str:
-    """Best-effort human label from a vCard TYPE param."""
+def _parse_addressbook(xml_bytes: bytes) -> list[dict]:
+    """Parse a CardDAV multistatus into [{google_href, etag, vcard, name}]."""
+    out: list[dict] = []
     try:
-        types = component.params.get("TYPE", [])
-        if types:
-            return str(types[0]).capitalize()
-    except Exception:
-        pass
-    return ""
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return out
+    D, C = "{DAV:}", "{urn:ietf:params:xml:ns:carddav}"
+    for resp in root.findall(f"{D}response"):
+        href_el = resp.find(f"{D}href")
+        if href_el is None or not href_el.text:
+            continue
+        etag, vcard = "", ""
+        for propstat in resp.findall(f"{D}propstat"):
+            prop = propstat.find(f"{D}prop")
+            if prop is None:
+                continue
+            et = prop.find(f"{D}getetag")
+            if et is not None and et.text:
+                etag = et.text
+            ad = prop.find(f"{C}address-data")
+            if ad is not None and ad.text:
+                vcard = ad.text
+        if not vcard:
+            continue  # the collection entry itself, or no data
+        out.append({"google_href": href_el.text, "etag": etag,
+                    "vcard": vcard, "name": _vcard_fn(vcard)})
+    return out
+
+
+def _vcard_fn(vcard_text: str) -> str:
+    for line in vcard_text.splitlines():
+        if line.upper().startswith("FN:"):
+            return line[3:].strip() or "Contact"
+    return "Contact"

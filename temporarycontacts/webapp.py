@@ -196,8 +196,12 @@ def create_flask_app(cfg: Config, service: RetentionService,
     @app.route("/contacts")
     @login_required
     def contacts():
-        items = service.list_for_user(session["user"])
-        return render_template("contacts.html", contacts=items)
+        user = session["user"]
+        items = service.list_for_user(user)
+        google_contacts = (service.list_google_cache(user)
+                           if google_link and google_link.enabled else [])
+        return render_template("contacts.html", contacts=items,
+                               google_contacts=google_contacts)
 
     @app.route("/contacts/<addressbook>/<href>/retention", methods=["POST"])
     @login_required
@@ -228,7 +232,7 @@ def create_flask_app(cfg: Config, service: RetentionService,
             flash("Connect your Google account first (Settings).")
             return redirect(url_for("settings"))
         try:
-            service.link_contact(user, addressbook, href)
+            service.keep_to_google(user, addressbook, href)
         except GoogleNotConnected:
             flash("Connect your Google account first (Settings).")
             return redirect(url_for("settings"))
@@ -238,7 +242,36 @@ def create_flask_app(cfg: Config, service: RetentionService,
         except GoogleApiError as exc:
             flash(f"Google rejected the contact: {exc}")
             return redirect(url_for("contacts"))
-        flash("Saved to Google Contacts. It stays synced and no longer expires.")
+        flash("Moved to Google Contacts.")
+        return redirect(url_for("contacts"))
+
+    @app.route("/google/refresh", methods=["POST"])
+    @login_required
+    def google_refresh():
+        user = session["user"]
+        if not (google_link and google_link.enabled and google_link.connection(user)):
+            flash("Connect your Google account first (Settings).")
+            return redirect(url_for("settings"))
+        try:
+            n = service.refresh_google_cache(user)
+            flash(f"Refreshed {n} Google contact{'' if n == 1 else 's'}.")
+        except (GoogleApiError, GoogleNotConnected) as exc:
+            flash(f"Couldn't refresh Google contacts: {exc}")
+        return redirect(url_for("contacts"))
+
+    @app.route("/google/<int:cache_id>/make-temporary", methods=["POST"])
+    @login_required
+    def make_temporary(cache_id):
+        user = session["user"]
+        try:
+            ok = service.make_temporary(user, cache_id)
+        except GoogleNotConnected:
+            flash("Connect your Google account first (Settings).")
+            return redirect(url_for("settings"))
+        except GoogleApiError as exc:
+            flash(f"Couldn't move to Temporary: {exc}")
+            return redirect(url_for("contacts"))
+        flash("Moved to Temporary." if ok else "That contact is no longer cached.")
         return redirect(url_for("contacts"))
 
     @app.route("/contacts/<addressbook>/<href>/edit", methods=["GET", "POST"])
@@ -252,7 +285,6 @@ def create_flask_app(cfg: Config, service: RetentionService,
         if request.method == "POST":
             text = _apply_form_to_vcard(vobj, request.form)
             contacts_api.save_contact(service.storage, user, addressbook, href, text)
-            service.push_after_edit(user, addressbook, href)
             flash("Contact updated.")
             return redirect(url_for("contacts"))
         return render_template("edit.html", form=_vcard_to_form(vobj),

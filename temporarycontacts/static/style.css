@@ -70,6 +70,8 @@ body {
 }
 .badge.expired { background: #fee2e2; color: #991b1b; }
 .badge.kept { background: #dcfce7; color: #166534; }
+.badge.google { background: #e0e7ff; color: #3730a3; }
+.google-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 .edit-form label { display: block; margin: 10px 0; font-size: 14px; color: var(--muted); }
 .edit-form input, .edit-form textarea {
