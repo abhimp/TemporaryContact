@@ -22,20 +22,25 @@
     <div class="card empty">
       <p>No temporary contacts yet.</p>
       <p class="muted">Add a contact on your phone (in the account synced to this
-      server) and it appears here, expiring after the default retention.</p>
+      server) and it appears here, counting down to its expiry.</p>
     </div>
   {% else %}
     <ul class="contacts">
       {% for c in contacts %}
       {% set amt, unit = decompose(c.retention_seconds) %}
+      {% set rs = c.retention_seconds or 0 %}
+      {% set sl = c.seconds_left if (c.seconds_left is not none and c.seconds_left > 0) else 0 %}
+      {% set pct = ([ (sl / rs * 100) if rs > 0 else 0, 100 ] | min) | int %}
+      {% set urg = 'ok' if pct > 50 else ('soon' if pct > 10 else 'crit') %}
       <li class="contact" data-group="temporary" data-name="{{ c.name|lower }}">
         <div class="contact-head">
           <span class="avatar">{{ (c.name[:1] or '?')|upper }}</span>
-          <span class="name">{{ c.name }}</span>
-          <span class="badge {{ 'expired' if c.seconds_left is not none and c.seconds_left <= 0 else '' }}">
-            {{ format_left(c.seconds_left) }}
-          </span>
+          <div class="who">
+            <div class="name">{{ c.name }}</div>
+            <div class="meta"><span class="tleft {{ urg }} tnum">{{ format_left(c.seconds_left) }}</span></div>
+          </div>
         </div>
+        <div class="meter"><span class="meter-fill {{ urg }}" style="width: {{ pct }}%"></span></div>
         <div class="contact-actions">
           <form method="post"
                 action="{{ url_for('set_retention', addressbook=c.addressbook, href=c.href) }}"
@@ -47,7 +52,7 @@
               {% endfor %}
             </select>
             <button type="submit" name="mode" value="set" class="btn sm">Set</button>
-            <button type="submit" name="mode" value="extend" class="btn sm" title="Add this to the current expiry">+ Extend</button>
+            <button type="submit" name="mode" value="extend" class="btn sm" title="Add to the current expiry">+ Extend</button>
           </form>
           <a class="btn sm" href="{{ url_for('edit_contact', addressbook=c.addressbook, href=c.href) }}">Edit</a>
           {% if google_enabled %}
@@ -71,8 +76,7 @@
 
 {% if google_enabled %}
 <section data-section="google">
-  <div class="section-title google-head">
-    <span>Google · view only</span>
+  <div class="section-title"><span>Google · view only</span>
     <form method="post" action="{{ url_for('google_refresh') }}">
       <button type="submit" class="btn sm">Refresh</button>
     </form>
@@ -80,8 +84,8 @@
   {% if not google_contacts %}
     <div class="card empty">
       <p class="muted">No cached Google contacts. Press <strong>Refresh</strong>
-      to load them. (Your phone always sees Google contacts live — this list is
-      just for viewing here.)</p>
+      to load them. Your phone always sees Google contacts live — this list is
+      just for viewing here.</p>
     </div>
   {% else %}
     <ul class="contacts">
@@ -89,8 +93,11 @@
       <li class="contact" data-group="google" data-name="{{ g.name|lower }}">
         <div class="contact-head">
           <span class="avatar g">{{ (g.name[:1] or '?')|upper }}</span>
-          <span class="name">{{ g.name }}</span>
-          <span class="badge google">Google</span>
+          <div class="who">
+            <div class="name">{{ g.name }}</div>
+            <div class="meta muted">Synced with Google</div>
+          </div>
+          <span class="badge google">Permanent</span>
         </div>
         <div class="contact-actions">
           <form method="post"
@@ -108,14 +115,16 @@
 
 {% if trash %}
 <section data-section="deleted" hidden>
-  <div class="section-title">Deleted · recoverable for a while</div>
+  <div class="section-title"><span>Deleted · recoverable for a while</span></div>
   <ul class="contacts">
     {% for d in trash %}
     <li class="contact" data-group="deleted" data-name="{{ d.name|lower }}">
       <div class="contact-head">
-        <span class="avatar" style="background:var(--border);color:var(--muted);">{{ (d.name[:1] or '?')|upper }}</span>
-        <span class="name">{{ d.name }}</span>
-        <span class="badge">{{ d.reason }} · {{ d.deleted_at.strftime('%b %-d') }}</span>
+        <span class="avatar">{{ (d.name[:1] or '?')|upper }}</span>
+        <div class="who">
+          <div class="name">{{ d.name }}</div>
+          <div class="meta muted">{{ d.reason }} · {{ d.deleted_at.strftime('%b %-d') }}</div>
+        </div>
       </div>
       <div class="contact-actions">
         <form method="post" action="{{ url_for('restore_contact', trash_id=d.id) }}">
@@ -148,7 +157,6 @@
     var term = (q.value || '').trim().toLowerCase();
     var visible = 0;
     items.forEach(function (it) {
-      // "All" = active contacts (Temporary + Google), never the Deleted archive.
       var okGroup = group === 'all' ? it.dataset.group !== 'deleted'
                                     : it.dataset.group === group;
       var okTerm = !term || it.dataset.name.indexOf(term) !== -1;
@@ -158,10 +166,9 @@
     });
     sections.forEach(function (sec) {
       var g = sec.dataset.section;
-      var groupOk = group === 'all' ? g !== 'deleted' : group === g;
-      sec.hidden = !groupOk;
+      sec.hidden = !(group === 'all' ? g !== 'deleted' : group === g);
       var empty = sec.querySelector('.empty');
-      if (empty) empty.hidden = !!term;      // hide "nothing yet" cards while searching
+      if (empty) empty.hidden = !!term;
     });
     noResults.hidden = !(term && visible === 0);
     qEcho.textContent = q.value;
